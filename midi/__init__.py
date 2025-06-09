@@ -1,3 +1,5 @@
+"""Minimal MIDI utilities."""
+
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
@@ -22,3 +24,14 @@ def number_to_note(number: int) -> str:
         raise ValueError("MIDI note number must be between 0 and 127")
     octave, index = divmod(number, 12)
     return f"{NOTE_NAMES[index]}{octave - 1}"
+
+
+from .orchestra import create_orchestral_midi, NoteEvent
+
+
+__all__ = [
+    "note_to_number",
+    "number_to_note",
+    "create_orchestral_midi",
+    "NoteEvent",
+]
