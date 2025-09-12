@@ -29,5 +29,22 @@ def test_create_orchestral_midi():
     assert len(mid.tracks) == 1 + len(layers)
 
 
+def test_program_change():
+    mido = pytest.importorskip("mido")
+    layers = {
+        "piano": ([(0.0, 60, 1.0, 64)], 1),
+        "strings": [(0.5, 67, 1.5, 64)],
+    }
+    mid = create_orchestral_midi(layers)
+    piano_track = next(t for t in mid.tracks if getattr(t, "name", "") == "piano")
+    piano_program = next(msg for msg in piano_track if msg.type == "program_change")
+    assert piano_program.program == 1
+    assert piano_program.time == 0
+    strings_track = next(
+        t for t in mid.tracks if getattr(t, "name", "") == "strings"
+    )
+    assert all(msg.type != "program_change" for msg in strings_track)
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
