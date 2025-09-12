@@ -35,3 +35,24 @@ layers = {
 mid = create_orchestral_midi(layers)
 mid.save("score.mid")
 ```
+
+## Project Structure
+
+Beyond the core `midi` utilities, the repository now includes placeholder packages for a complete audio production pipeline:
+
+- `generation/` – interfaces for AI-assisted audio generation.
+  - `suno_wrapper.py` – stub for integrating with the Suno API.
+- `separation/` – tools for stem separation.
+  - `demucs_wrapper.py` – stub for Demucs-based separation.
+- `upscaling/` – audio enhancement and upscaling helpers.
+  - `upscaler_wrapper.py` – stub for future upscaling models.
+- `mix_prep/` – preparation steps prior to mixing.
+  - `mix_prep_wrapper.py` – stub for organizing and cleaning stems.
+- `human_mix/` – modules supporting human-in-the-loop mixing.
+  - `human_mix_wrapper.py` – stub for manual mixing routines.
+- `mastering/` – final mastering stages.
+  - `mastering_wrapper.py` – stub for automated mastering.
+- `examples/` – demonstration scripts showing how modules fit together.
+  - `example_workflow.py` – minimal example pipeline.
+
+These modules are placeholders and will be fleshed out as the project evolves.
