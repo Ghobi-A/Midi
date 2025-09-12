@@ -1,6 +1,6 @@
 """Utilities for creating layered MIDI sequences."""
 
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Tuple, Optional, Union
 
 try:  # pragma: no cover - optional dependency
     from mido import MidiFile, MidiTrack, Message, MetaMessage
@@ -10,9 +10,13 @@ except Exception:  # pragma: no cover - mido missing
 NoteEvent = Tuple[float, int, float, int]
 """time (beats), note number, duration (beats), velocity"""
 
+# A layer can be provided either as an iterable of ``NoteEvent`` objects or as a
+# pair ``(events, program)`` where ``program`` is the MIDI program number.
+LayerSpec = Union[Iterable[NoteEvent], Tuple[Iterable[NoteEvent], int]]
+
 
 def create_orchestral_midi(
-    layers: Dict[str, Iterable[NoteEvent]],
+    layers: Dict[str, LayerSpec],
     tempo: int = 500000,
     ticks_per_beat: int = 480,
 ) -> MidiFile:
@@ -21,7 +25,9 @@ def create_orchestral_midi(
     Parameters
     ----------
     layers:
-        Mapping of track names to iterables of ``NoteEvent`` tuples.
+        Mapping of track names to either an iterable of ``NoteEvent`` tuples or
+        a pair ``(events, program)`` where ``program`` is the instrument number
+        to set via a ``program_change`` message at the start of the track.
     tempo:
         Microseconds per beat (default 500000, i.e. 120 BPM).
     ticks_per_beat:
@@ -37,9 +43,18 @@ def create_orchestral_midi(
     tempo_track.append(MetaMessage("set_tempo", tempo=tempo, time=0))
     mid.tracks.append(tempo_track)
 
-    for name, events in layers.items():
+    for name, spec in layers.items():
+        program: Optional[int] = None
+        events: Iterable[NoteEvent]
+        if isinstance(spec, tuple) and len(spec) == 2 and isinstance(spec[1], int):
+            events, program = spec
+        else:
+            events = spec
+
         track = MidiTrack()
         track.name = name
+        if program is not None:
+            track.append(Message("program_change", program=program, time=0))
         mid.tracks.append(track)
 
         current_tick = 0
