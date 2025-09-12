@@ -2,6 +2,15 @@
 
 Simple utilities to convert between MIDI note numbers and note names.
 
+## Installation
+
+Install the core dependencies and this package:
+
+```bash
+pip install -r requirements.txt
+pip install .
+```
+
 ## Coding
 
 The `midi` package provides a few helper functions:
