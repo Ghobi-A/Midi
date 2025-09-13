@@ -15,6 +15,7 @@ dependencies = [
     "mido",
     "requests",
     "numpy",
+    "torch",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,8 @@ ml = [
     "peft",
     "transformers",
     "pyloudnorm",
+    "demucs",
+    "spleeter",
 ]
 
 [project.scripts]

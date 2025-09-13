@@ -4,9 +4,12 @@ soundfile
 mido
 requests
 numpy
+torch
 
 # Heavy ML dependencies (optional)
 datasets
 peft
 transformers
 pyloudnorm
+demucs
+spleeter
