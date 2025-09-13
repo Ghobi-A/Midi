@@ -3,3 +3,10 @@ torchaudio
 soundfile
 mido
 requests
+numpy
+
+# Heavy ML dependencies (optional)
+datasets
+peft
+transformers
+pyloudnorm
