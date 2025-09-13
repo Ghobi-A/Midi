@@ -66,7 +66,9 @@ Beyond the core `midi` utilities, the repository now includes placeholder packag
   - `spleeter_wrapper.py` – stub for Spleeter-based separation.
   - `__init__.py` – factory exposing `get_separator` to pick a backend.
 - `upscaling/` – audio enhancement and upscaling helpers.
-  - `upscaler_wrapper.py` – stub for future upscaling models.
+  - `voc_upscaler.py` – placeholder vocal enhancer.
+  - `guitar_upscaler.py` – placeholder guitar track enhancer.
+  - `utils.py` – shared utilities for loading models.
 - `mix_prep/` – preparation steps prior to mixing.
   - `mix_prep_wrapper.py` – stub for organizing and cleaning stems.
 - `human_mix/` – modules supporting human-in-the-loop mixing.
