@@ -33,6 +33,20 @@ $ python -m midi.cli --number 60
 C4
 ```
 
+### Demo Pipeline Notebook
+
+For an end-to-end walk-through of the broader audio workflow, open
+[`examples/demo_pipeline.ipynb`](examples/demo_pipeline.ipynb). It steps
+through generation → separation → mix prep → mastering.
+
+If you need a small test file, download an open sample clip:
+
+```bash
+curl -L -o examples/sample_clip.wav https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav
+```
+
+Then launch the notebook and follow the instructions.
+
 #### Creating orchestral MIDI
 
 ```python
@@ -76,7 +90,7 @@ Beyond the core `midi` utilities, the repository now includes placeholder packag
 - `mastering/` – final mastering stages.
   - `mastering_wrapper.py` – stub for automated mastering.
 - `examples/` – demonstration scripts showing how modules fit together.
-  - `example_workflow.py` – minimal example pipeline.
+  - `demo_pipeline.ipynb` – interactive notebook walking through generation → separation → mix prep → mastering.
 
 These modules are placeholders and will be fleshed out as the project evolves.
 
