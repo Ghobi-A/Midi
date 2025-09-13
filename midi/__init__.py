@@ -1,6 +1,43 @@
 """Minimal MIDI utilities."""
 
-NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+# Standard note names using sharps for indexing
+NOTE_NAMES = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+]
+
+# Equivalent note names expressed with flats. These are used for output so
+# that either form can round-trip through the conversion functions.
+NOTE_NAMES_FLAT = [
+    "C",
+    "Db",
+    "D",
+    "Eb",
+    "E",
+    "F",
+    "Gb",
+    "G",
+    "Ab",
+    "A",
+    "Bb",
+    "B",
+]
+
+# Mapping from any accepted note name (sharp or flat) to its index within an
+# octave. The keys are normalised to have a capital letter followed by any
+# accidental.
+NOTE_NAME_TO_INDEX = {name: i for i, name in enumerate(NOTE_NAMES)}
+NOTE_NAME_TO_INDEX.update({name: i for i, name in enumerate(NOTE_NAMES_FLAT)})
 
 
 def note_to_number(note: str) -> int:
@@ -13,9 +50,10 @@ def note_to_number(note: str) -> int:
         name = note[:-1]
     else:
         raise ValueError("Note must end with octave number")
-    if name not in NOTE_NAMES:
+    name = name[0].upper() + name[1:].lower()
+    if name not in NOTE_NAME_TO_INDEX:
         raise ValueError(f"Invalid note name: {name}")
-    return NOTE_NAMES.index(name) + (octave + 1) * 12
+    return NOTE_NAME_TO_INDEX[name] + (octave + 1) * 12
 
 
 def number_to_note(number: int) -> str:
@@ -23,7 +61,7 @@ def number_to_note(number: int) -> str:
     if not (0 <= number <= 127):
         raise ValueError("MIDI note number must be between 0 and 127")
     octave, index = divmod(number, 12)
-    return f"{NOTE_NAMES[index]}{octave - 1}"
+    return f"{NOTE_NAMES_FLAT[index]}{octave - 1}"
 
 
 from .orchestra import create_orchestral_midi, NoteEvent
