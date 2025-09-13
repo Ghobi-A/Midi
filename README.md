@@ -4,7 +4,9 @@ Simple utilities to convert between MIDI note numbers and note names.
 
 ## Installation
 
-Install the core dependencies and this package:
+Install the core dependencies and this package.  The included
+`requirements.txt` bundles optional libraries used by the
+demonstration modules (e.g. the Suno client and Demucs separator):
 
 ```bash
 pip install -r requirements.txt
@@ -48,21 +50,30 @@ mid.save("score.mid")
 
 ## Project Structure
 
-Beyond the core `midi` utilities, the repository now includes placeholder packages for a complete audio production pipeline:
+Beyond the core `midi` utilities, the repository now includes modules for a
+complete audio production pipeline:
 
 - `generation/` – interfaces for AI-assisted audio generation.
-  - `suno_wrapper.py` – stub for integrating with the Suno API.
+  - `suno_client.py` – minimal client for the [Suno API](https://docs.suno.ai).
 - `separation/` – tools for stem separation.
-  - `demucs_wrapper.py` – stub for Demucs-based separation.
+  - `demucs_separator.py` – wrapper around [Demucs](https://github.com/facebookresearch/demucs).
 - `upscaling/` – audio enhancement and upscaling helpers.
-  - `upscaler_wrapper.py` – stub for future upscaling models.
+  - `voc_upscaler.py` – simple vocal upscaler built on neural vocoders (see [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)).
 - `mix_prep/` – preparation steps prior to mixing.
-  - `mix_prep_wrapper.py` – stub for organizing and cleaning stems.
+  - `mix_prep.py` – organizes and cleans stems before the mix stage; see the [example workflow](examples/example_workflow.py).
 - `human_mix/` – modules supporting human-in-the-loop mixing.
-  - `human_mix_wrapper.py` – stub for manual mixing routines.
+  - `human_mix.py` – utilities for manual or assisted mixing sessions (also showcased in the [example workflow](examples/example_workflow.py)).
 - `mastering/` – final mastering stages.
-  - `mastering_wrapper.py` – stub for automated mastering.
+  - `mastering_engine.py` – basic loudness and EQ mastering routines, used at the end of the [example workflow](examples/example_workflow.py).
 - `examples/` – demonstration scripts showing how modules fit together.
-  - `example_workflow.py` – minimal example pipeline.
+  - `example_workflow.py` – minimal end-to-end pipeline example.
 
-These modules are placeholders and will be fleshed out as the project evolves.
+Each module is self-contained and can be invoked directly.  For instance the
+Suno client can generate a short track with:
+
+```bash
+python -m generation.suno_client output.wav --prompt "lofi beat"
+```
+
+See the individual source files or linked projects for more detailed
+documentation.
