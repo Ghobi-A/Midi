@@ -2,3 +2,4 @@ librosa
 torchaudio
 soundfile
 mido
+requests

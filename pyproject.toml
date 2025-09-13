@@ -13,4 +13,5 @@ dependencies = [
     "torchaudio",
     "soundfile",
     "mido",
+    "requests",
 ]
