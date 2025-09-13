@@ -1,0 +1,8 @@
+default_model: mdx_uvr_inst_hq
+models:
+  mdx_uvr_inst_hq:
+    name: "MDX-Net UVR-Inst-HQ"
+    path: "models/mdx_uvr_inst_hq.onnx"
+  demucs_v4:
+    name: "Demucs v4"
+    path: "models/demucs_v4.onnx"
