@@ -66,3 +66,26 @@ Beyond the core `midi` utilities, the repository now includes placeholder packag
   - `example_workflow.py` – minimal example pipeline.
 
 These modules are placeholders and will be fleshed out as the project evolves.
+
+### DAW Integration
+
+The `human_mix` utilities can aid workflows inside digital audio workstations.
+For example, a DAW script could analyse stems against a reference track and
+prepare effect chains:
+
+```python
+from human_mix import reference_mixer
+from human_mix import effect_chain_templates as ect
+
+suggestions = reference_mixer.compare_to_reference(
+    "mix.wav", {"vocals": "stems/vocals.wav"}
+)
+print(suggestions["vocals"])  # mix suggestions for the vocal stem
+
+chain = ect.get_template("ROCK_LEAD_VOX")
+for effect in chain:
+    print(effect.name, effect.params)
+```
+
+These results can then be applied through your DAW's scripting interface (e.g.,
+Reaper's Python API or Ableton Live's remote scripts).
