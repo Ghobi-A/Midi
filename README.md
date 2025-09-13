@@ -46,6 +46,15 @@ mid = create_orchestral_midi(layers)
 mid.save("score.mid")
 ```
 
+#### Selecting a separation backend
+
+```python
+from separation import get_separator
+
+separate = get_separator("spleeter")  # or "demucs"
+separate("track.wav", "stems/")
+```
+
 ## Project Structure
 
 Beyond the core `midi` utilities, the repository now includes placeholder packages for a complete audio production pipeline:
@@ -54,6 +63,8 @@ Beyond the core `midi` utilities, the repository now includes placeholder packag
   - `suno_wrapper.py` – stub for integrating with the Suno API.
 - `separation/` – tools for stem separation.
   - `demucs_wrapper.py` – stub for Demucs-based separation.
+  - `spleeter_wrapper.py` – stub for Spleeter-based separation.
+  - `__init__.py` – factory exposing `get_separator` to pick a backend.
 - `upscaling/` – audio enhancement and upscaling helpers.
   - `upscaler_wrapper.py` – stub for future upscaling models.
 - `mix_prep/` – preparation steps prior to mixing.
