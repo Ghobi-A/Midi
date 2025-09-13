@@ -11,6 +11,16 @@ pip install -r requirements.txt
 pip install .
 ```
 
+For optional machine learning features, install the extra dependencies:
+
+```bash
+pip install .[ml]
+```
+
+These heavier packages—`datasets`, `peft`, `transformers`, and `pyloudnorm`—are
+included in `requirements.txt` but can be skipped if you only need the core MIDI
+utilities.
+
 ## Coding
 
 The `midi` package provides a few helper functions:
