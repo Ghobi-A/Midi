@@ -10,11 +10,18 @@ from midi import (
 def test_note_to_number():
     assert note_to_number('C4') == 60
     assert note_to_number('A4') == 69
+    # Flats map to their sharp equivalents and input is case-insensitive
+    assert note_to_number('Db4') == note_to_number('C#4')
+    assert note_to_number('c4') == 60
 
 
 def test_number_to_note():
     assert number_to_note(60) == 'C4'
     assert number_to_note(69) == 'A4'
+    # Conversions handle sharps and flats
+    assert number_to_note(note_to_number('Db4')) == 'C#4'
+    assert number_to_note(note_to_number('C#4'), prefer_sharps=False) == 'Db4'
+    assert number_to_note(note_to_number('db4')) == 'C#4'
 
 
 def test_create_orchestral_midi():
