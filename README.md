@@ -47,7 +47,8 @@ C4
 
 For an end-to-end walk-through of the broader audio workflow, open
 [`examples/demo_pipeline.ipynb`](examples/demo_pipeline.ipynb). It steps
-through generation → separation → mix prep → mastering.
+through generation → separation → mix prep → mastering using
+`suno_wrapper`, `demucs_wrapper`, `auto_eq`, and `ai_master`.
 
 If you need a small test file, download an open sample clip:
 
@@ -81,28 +82,32 @@ separate("track.wav", "stems/")
 
 ## Project Structure
 
-Beyond the core `midi` utilities, the repository now includes placeholder packages for a complete audio production pipeline:
+Beyond the core `midi` utilities, the repository includes modules for a complete audio production pipeline:
 
 - `generation/` – interfaces for AI-assisted audio generation.
-  - `suno_wrapper.py` – stub for integrating with the Suno API.
+  - `suno_wrapper.py` – minimal Suno API integration *(implemented).* 
 - `separation/` – tools for stem separation.
-  - `demucs_wrapper.py` – stub for Demucs-based separation.
-  - `spleeter_wrapper.py` – stub for Spleeter-based separation.
+  - `demucs_wrapper.py` – Demucs-based separation backend *(implemented; optional dependency).* 
+  - `spleeter_wrapper.py` – Spleeter-based separation backend *(implemented; optional dependency).* 
   - `__init__.py` – factory exposing `get_separator` to pick a backend.
 - `upscaling/` – audio enhancement and upscaling helpers.
-  - `voc_upscaler.py` – placeholder vocal enhancer.
-  - `guitar_upscaler.py` – placeholder guitar track enhancer.
+  - `voc_upscaler.py` – vocal enhancer *(implemented; heavy dependency).* 
+  - `guitar_upscaler.py` – guitar track enhancer *(implemented; heavy dependency).* 
   - `utils.py` – shared utilities for loading models.
 - `mix_prep/` – preparation steps prior to mixing.
-  - `mix_prep_wrapper.py` – stub for organizing and cleaning stems.
+  - `auto_eq.py` – simple automatic equalization *(implemented).* 
+  - `noise_reduction.py`, `stereo_imaging.py`, `multiband_compression.py` – minimal placeholder utilities.
 - `human_mix/` – modules supporting human-in-the-loop mixing.
-  - `human_mix_wrapper.py` – stub for manual mixing routines.
+  - `reference_mixer.py` – compare stems to a reference track *(implemented).* 
+  - `effect_chain_templates.py` – basic effect chain definitions *(placeholder).* 
+  - `human_mix_wrapper.py` – convenience helpers combining analysis and templates *(implemented).* 
 - `mastering/` – final mastering stages.
-  - `mastering_wrapper.py` – stub for automated mastering.
+  - `ai_master.py` – loudness normalization and limiting *(implemented).* 
+  - `mastering_wrapper.py` – CLI entry point around `ai_master`.
 - `examples/` – demonstration scripts showing how modules fit together.
-  - `demo_pipeline.ipynb` – interactive notebook walking through generation → separation → mix prep → mastering.
+  - `demo_pipeline.ipynb` – interactive notebook walking through generation → separation → mix prep → mastering using the modules above.
 
-These modules are placeholders and will be fleshed out as the project evolves.
+Some modules above are fully functional, while others are simple placeholders awaiting more robust implementations.
 
 ### DAW Integration
 
