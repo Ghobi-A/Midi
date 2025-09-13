@@ -84,11 +84,15 @@ Beyond the core `midi` utilities, the repository now includes placeholder packag
   - `guitar_upscaler.py` – placeholder guitar track enhancer.
   - `utils.py` – shared utilities for loading models.
 - `mix_prep/` – preparation steps prior to mixing.
-  - `mix_prep_wrapper.py` – stub for organizing and cleaning stems.
+  - `auto_eq.py` – automatic equalization to balance stems.  
+    `auto_eq.apply_auto_eq("stems/")`
 - `human_mix/` – modules supporting human-in-the-loop mixing.
-  - `human_mix_wrapper.py` – stub for manual mixing routines.
+  - `reference_mixer.py` – compare stems against a reference mix.
+     `reference_mixer.compare_to_reference("ref.wav", {"vocals": "stems/vocals.wav"})`
+  - `effect_chain_templates.py` – starter templates for DAW effect chains.
 - `mastering/` – final mastering stages.
-  - `mastering_wrapper.py` – stub for automated mastering.
+  - `ai_master.py` – loudness normalization and limiting.
+     `ai_master.master_track("mix.wav", "master.wav")`
 - `examples/` – demonstration scripts showing how modules fit together.
   - `demo_pipeline.ipynb` – interactive notebook walking through generation → separation → mix prep → mastering.
 
