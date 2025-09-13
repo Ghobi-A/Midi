@@ -15,3 +15,6 @@ dependencies = [
     "mido",
     "requests",
 ]
+
+[project.scripts]
+ai-master = "mastering.ai_master:main"
