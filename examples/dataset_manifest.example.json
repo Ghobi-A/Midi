@@ -1,0 +1,35 @@
+[
+  {
+    "name": "my-cc0-piano-set",
+    "source_url": "https://example.org/open-piano-midi",
+    "license": "CC0 1.0",
+    "local_path": "/data/midi/cc0_piano",
+    "commercial_use_allowed": true,
+    "attribution_required": false,
+    "description": "Example entry: a hypothetical CC0 piano MIDI collection. Path is a placeholder — nothing is downloaded automatically.",
+    "notes": "Fully cleared for training and commercial use.",
+    "tags": ["piano", "example"]
+  },
+  {
+    "name": "research-pop-arrangements",
+    "source_url": "https://example.org/research-pop-midi",
+    "license": "CC BY-NC-SA 4.0",
+    "local_path": "/data/midi/research_pop",
+    "commercial_use_allowed": false,
+    "attribution_required": true,
+    "description": "Example entry: a hypothetical research-licensed pop arrangement set.",
+    "notes": "Non-commercial research use only; attribute the source in any publication.",
+    "tags": ["pop", "example"]
+  },
+  {
+    "name": "old-forum-game-midi-pack",
+    "source_url": "",
+    "license": "",
+    "local_path": "/data/midi/forum_pack",
+    "commercial_use_allowed": null,
+    "attribution_required": null,
+    "description": "Example entry showing what provenance validation rejects: no source URL, no license, fan-archive material.",
+    "notes": "Private reference/listening only — must NOT be used for training. validate_entry flags this with errors.",
+    "tags": ["fan-archive", "example"]
+  }
+]

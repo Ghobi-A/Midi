@@ -37,7 +37,7 @@ def test_create_orchestral_midi():
 
 
 def test_program_change():
-    mido = pytest.importorskip("mido")
+    pytest.importorskip("mido")
     layers = {
         "piano": ([(0.0, 60, 1.0, 64)], 1),
         "strings": [(0.5, 67, 1.5, 64)],

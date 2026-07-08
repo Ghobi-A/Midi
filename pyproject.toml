@@ -35,6 +35,13 @@ ml = [
     "scikit-learn",
     "datasets",
 ]
+# Optional symbolic-tokenization stack (Stage 1.5). The internal tokenizer in
+# creative_audio_lab.tokenization needs none of these — they only power the
+# MidiTok REMI adapter for tokenizing external MIDI files.
+symbolic = [
+    "miditok",
+    "symusic",
+]
 
 [project.scripts]
 ai-master = "mastering.ai_master:main"
@@ -49,6 +56,9 @@ packages = [
     "creative_audio_lab.export",
     "creative_audio_lab.evaluation",
     "creative_audio_lab.data",
+    "creative_audio_lab.tokenization",
+    "creative_audio_lab.models",
+    "creative_audio_lab.preview",
     "midi",
     "separation",
     "mix_prep",

@@ -20,10 +20,11 @@ import streamlit as st
 
 from creative_audio_lab.evaluation import evaluate_arrangement
 from creative_audio_lab.export import export_arrangement_files
-from creative_audio_lab.generators.arrangement import build_arrangement
+from creative_audio_lab.models import DEFAULT_BACKEND_NAME, get_backend, list_backends
 from creative_audio_lab.motif_detection import detect_motifs
 from creative_audio_lab.music_theory import SCALES
-from creative_audio_lab.prompt_parser import STYLE_PRESETS, parse_prompt
+from creative_audio_lab.preview import summarize_arrangement
+from creative_audio_lab.prompt_parser import STYLE_PRESETS
 
 EXAMPLE_PROMPTS = [
     "dark orchestral boss battle theme, 140 BPM, brass ostinato, strings, piano arps",
@@ -52,7 +53,32 @@ st.caption(
 if "prompt_text" not in st.session_state:
     st.session_state["prompt_text"] = ""
 
+backend_infos = list_backends()
+available_backends = [info for info in backend_infos if info.available]
+future_backends = [info for info in backend_infos if not info.available]
+
 with st.sidebar:
+    st.header("Backend")
+    backend_labels = {info.display_name: info.name for info in available_backends}
+    backend_label = st.selectbox("Generation backend", list(backend_labels))
+    backend_name = backend_labels.get(backend_label, DEFAULT_BACKEND_NAME)
+    for info in future_backends:
+        st.caption(f"🔒 **{info.display_name}** — scaffolded, not yet available")
+    with st.expander("ML readiness"):
+        st.markdown(
+            "- The **deterministic backend** (rule-based parser + generators) is the "
+            "current default — no trained model is involved.\n"
+            "- A **symbolic tokenization layer** (`creative_audio_lab.tokenization`) "
+            "converts note events to/from REMI-style tokens, with an optional MidiTok "
+            "adapter.\n"
+            "- A **dataset manifest + provenance layer** (`creative_audio_lab.data`) "
+            "tracks source, license, and commercial-use rights before any training data "
+            "is touched.\n"
+            "- **Future model adapters** (Text2midi, MIDI-LLM) are scaffolded behind the "
+            "same `GenerationBackend` interface, so a learned model can plug in without "
+            "changing this app."
+        )
+
     st.header("Controls")
     st.caption("Leave a control on Auto to let the deterministic prompt parser decide.")
     key_choice = st.selectbox("Key", ["Auto", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"])
@@ -82,7 +108,8 @@ if generate:
     if not prompt.strip():
         st.warning("Enter a prompt first.")
     else:
-        controls = parse_prompt(
+        backend = get_backend(backend_name)
+        arrangement = backend.generate(
             prompt,
             key=None if key_choice == "Auto" else key_choice,
             mode=None if mode_choice == "Auto" else mode_choice,
@@ -93,12 +120,11 @@ if generate:
             density=None if density_choice == "Auto" else density_choice,
             instruments=instruments_choice or None,
         )
-        st.session_state["controls"] = controls
-        st.session_state["arrangement"] = build_arrangement(controls)
+        st.session_state["arrangement"] = arrangement
 
 if "arrangement" in st.session_state:
     arrangement = st.session_state["arrangement"]
-    controls = st.session_state["controls"]
+    controls = arrangement.controls
 
     st.subheader("Arrangement summary")
     summary_cols = st.columns(4)
@@ -117,6 +143,22 @@ if "arrangement" in st.session_state:
     degrees = [str(event.chord.degree) for event in arrangement.chord_events]
     shown = " – ".join(degrees[:16]) + (" ..." if len(degrees) > 16 else "")
     st.write(f"**Chord progression (scale degrees):** {shown}")
+
+    summary = summarize_arrangement(arrangement)
+    with st.expander("Track summary"):
+        st.table(
+            [
+                {
+                    "Track": track.name,
+                    "Program": "GM drums" if track.is_drum else (track.program if track.program is not None else "—"),
+                    "Notes": track.note_count,
+                    "Bars": track.duration_bars,
+                    "Pitch range": "—" if track.pitch_min is None or track.is_drum else f"{track.pitch_min}–{track.pitch_max}",
+                    "Notes/bar": f"{track.notes_per_bar:.1f}",
+                }
+                for track in summary.tracks
+            ]
+        )
 
     st.subheader("Download MIDI")
     files = export_arrangement_files(arrangement)
