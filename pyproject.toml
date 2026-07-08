@@ -3,30 +3,64 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "midi-utils"
+name = "creative-audio-lab"
 version = "0.1.0"
-description = "Simple utilities to convert between MIDI note numbers and note names."
+description = "A prompt-conditioned symbolic music generator that creates DAW-ready MIDI arrangements instead of finished audio."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
-    "librosa",
-    "torchaudio",
-    "soundfile",
     "mido",
-    "requests",
     "numpy",
-    "torch",
 ]
 
 [project.optional-dependencies]
-ml = [
-    "datasets",
-    "peft",
-    "transformers",
+app = [
+    "streamlit",
+]
+dev = [
+    "pytest",
+    "ruff",
+]
+audio = [
+    "librosa",
+    "soundfile",
     "pyloudnorm",
     "demucs",
     "spleeter",
+    "torchaudio",
+]
+ml = [
+    "torch",
+    "transformers",
+    "scikit-learn",
+    "datasets",
 ]
 
 [project.scripts]
 ai-master = "mastering.ai_master:main"
+
+# Explicit package discovery: creative_audio_lab lives under src/, while the
+# legacy audio-production utilities remain flat at the repo root. Auto-discovery
+# would otherwise error out with "multiple top-level packages discovered".
+[tool.setuptools]
+packages = [
+    "creative_audio_lab",
+    "creative_audio_lab.generators",
+    "creative_audio_lab.export",
+    "creative_audio_lab.evaluation",
+    "creative_audio_lab.data",
+    "midi",
+    "separation",
+    "mix_prep",
+    "human_mix",
+    "mastering",
+    "upscaling",
+]
+
+[tool.setuptools.package-dir]
+creative_audio_lab = "src/creative_audio_lab"
+
+[tool.ruff.lint.per-file-ignores]
+# app.py inserts src/ onto sys.path before importing so it also runs without
+# an editable install; that necessarily puts imports after top-of-file code.
+"app.py" = ["E402"]

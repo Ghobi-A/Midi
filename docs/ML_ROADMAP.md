@@ -1,0 +1,67 @@
+# ML Roadmap
+
+Creative Audio Lab's first shipped feature — the Prompt-to-MIDI Generator —
+is deliberately **deterministic and rule-based**. No model is trained in
+this pass. This document explains why that's the right first step, and lays
+out the concrete progression toward a learned system, so the codebase is
+structured for that future without pretending to be there already.
+
+## Why start deterministic
+
+A rule-based baseline is:
+
+- **Explainable.** Every note traces back to a chord degree, a scale, or an
+  explicit style rule — useful for debugging and for the evaluation metrics
+  in `creative_audio_lab.evaluation` to mean something.
+- **A real baseline.** Any future learned model has to beat this, not an
+  imagined one. `evaluation.metrics` gives concrete numbers (scale
+  adherence, harmonic fit, repetition, novelty) to compare against.
+- **Immediately shippable.** No training data, GPUs, or model hosting
+  required — the whole app extra is `mido` + `numpy` + `streamlit`.
+
+## Planned progression
+
+1. **Dataset ingestion** — point `creative_audio_lab.data.midi_dataset_loader`
+   at a local directory of MIDI files (see `DATASETS.md` for sourcing and
+   licensing guidance). Nothing is downloaded automatically.
+2. **MIDI parsing into note events** — already implemented in
+   `creative_audio_lab.midi_parser`; reused unchanged by the training
+   pipeline so generation and training share one canonical `Note`
+   representation.
+3. **Feature extraction** — interval, rhythm, and contour features per
+   `creative_audio_lab.motif_detection`, extended with tempo/key-normalized
+   statistics (`creative_audio_lab.data.preprocess_midi` already provides
+   quantization and transposition primitives to build on).
+4. **Motif embeddings** — learn fixed-size vector representations of the
+   motifs `motif_detection` already extracts, so similar melodic/rhythmic
+   ideas land near each other in embedding space.
+5. **Motif clustering** — group embedded motifs (e.g. k-means or HDBSCAN)
+   to discover recurring melodic vocabulary per style/mood, replacing the
+   hand-written `STYLE_PRESETS` tables with data-driven equivalents.
+6. **Prompt-to-control classifier** — replace `prompt_parser`'s keyword
+   tables with a learned classifier mapping free text to
+   `GenerationControls` (mood, style, energy, instrumentation), while
+   keeping the same typed output so every downstream generator is
+   unaffected.
+7. **Markov / n-gram continuation baseline** — a first learned generator:
+   sample melodic continuations from n-gram statistics over the motif
+   vocabulary, as a stepping stone before a full neural model and a much
+   stronger baseline to evaluate against.
+8. **Transformer-based symbolic MIDI generation** — a sequence model over
+   tokenized note events (pitch, duration, velocity, rest) trained on the
+   ingested corpus, generating full parts rather than just continuations.
+9. **Conditional generation** — condition the transformer on key, tempo,
+   mood, genre, instrument set, and an optional seed motif, so prompts and
+   UI controls steer generation the same way they do today.
+10. **Evaluation** — extend `creative_audio_lab.evaluation.metrics` with
+    motif retention, novelty, harmonic validity, and rhythmic coherence
+    comparisons between the rule-based baseline and each learned model,
+    plus human usability review (can a producer actually use this in a
+    DAW without heavy editing?) before anything replaces the deterministic
+    path in the default app experience.
+
+## What does *not* change
+
+Regardless of which stage above is reached, the output contract stays the
+same: **editable, DAW-ready MIDI**, not rendered audio. This project is a
+symbolic music generator, not an audio-generation clone.
