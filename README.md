@@ -38,10 +38,11 @@ pip install -e .
 Optional extras layer on top as needed:
 
 ```bash
-pip install -e ".[app]"   # Streamlit UI
-pip install -e ".[dev]"   # pytest, ruff
-pip install -e ".[audio]" # librosa, soundfile, pyloudnorm, demucs, spleeter, torchaudio
-pip install -e ".[ml]"    # torch, transformers, scikit-learn, datasets (future ML work)
+pip install -e ".[app]"      # Streamlit UI
+pip install -e ".[dev]"      # pytest, ruff
+pip install -e ".[audio]"    # librosa, soundfile, pyloudnorm, demucs, spleeter, torchaudio
+pip install -e ".[ml]"       # torch, transformers, scikit-learn, datasets (future ML work)
+pip install -e ".[symbolic]" # miditok, symusic (optional MidiTok REMI tokenization)
 ```
 
 None of `torch`, `torchaudio`, `transformers`, `demucs`, `spleeter`, or
@@ -121,7 +122,13 @@ src/creative_audio_lab/
         arrangement.py             Combines the above + assigns GM instrument programs
     export/midi_export.py           Note events -> MIDI bytes (full arrangement + stems)
     evaluation/metrics.py           Note density, harmonic fit, novelty, scale adherence, ...
-    data/                           Dataset manifest + local-only MIDI loader + preprocessing
+    models/                         GenerationBackend interface, DeterministicBackend (default),
+                                    placeholder Text2midi / MIDI-LLM adapters
+    tokenization/                   Dependency-free REMI-style symbolic tokenizer
+                                    + optional MidiTok/symusic adapter
+    preview/                        MIDI summaries and piano-roll grids (data only, no audio)
+    data/                           Dataset manifest + provenance/license validation +
+                                    local-only MIDI loader + preprocessing
                                     (scaffolding for ML_ROADMAP.md — no auto-download)
 tests/                              One test module per component above
 docs/
@@ -156,6 +163,43 @@ produces the same arrangement. The pipeline is:
    cinematic, dance) per bar, chosen from style and energy.
 6. **Arrangement** — combines all four parts, picks General MIDI program
    numbers from the requested instrument set, and hands off to `export/`.
+
+## Stage 1.5: ML-ready architecture
+
+The generator is still deterministic, but the codebase now has the
+scaffolding a text-conditioned symbolic model needs — implemented and
+tested, without pretending a model is already trained:
+
+- **Tokenization layer** (`creative_audio_lab.tokenization`) — a
+  dependency-free, REMI-style tokenizer converts `Note` events to and from
+  flat symbolic token sequences (`BAR`/`POSITION`/`NOTE_ON`/`DURATION`/
+  `VELOCITY`/`TEMPO`/`PROGRAM`/`TIME_SIGNATURE`). An optional adapter wraps
+  [MidiTok](https://github.com/Natooz/MidiTok) REMI for tokenizing external
+  MIDI files (`pip install -e ".[symbolic]"`); without the extra it fails
+  with a clear install hint instead of an obscure import error.
+- **Dataset provenance registry** (`creative_audio_lab.data`) — dataset
+  manifest entries now carry source URL, license, commercial-use and
+  attribution flags, notes, and tags, with validation that errors on
+  missing licenses/sources and on fan-archive/unclear-rights material, and
+  warns on unverified commercial terms. See
+  [`examples/dataset_manifest.example.json`](examples/dataset_manifest.example.json)
+  (placeholder paths only — nothing is ever downloaded).
+- **Backend interface** (`creative_audio_lab.models`) — a
+  `GenerationBackend` ABC with `DeterministicBackend` (the current parser +
+  generators) as the default implementation the app now calls.
+- **Future model adapters** — `Text2MidiAdapter` and `MidiLlmAdapter` are
+  scaffolded behind the same interface; they report themselves unavailable
+  and raise `NotImplementedError` with concrete integration guidance.
+- **Preview layer** (`creative_audio_lab.preview`) — per-track summaries
+  (note counts, pitch range, bars, density, drum presence) and a
+  piano-roll grid data structure, all pure data with no audio rendering.
+
+Why still no trained model? Because training one properly requires a
+rights-cleared corpus (see [`docs/DATASETS.md`](docs/DATASETS.md)), a
+tokenization scheme that's already settled (this layer), and a baseline to
+beat (the deterministic generator plus `evaluation.metrics`). Stage 1.5
+puts those prerequisites in place so a model can be added honestly — not
+bolted on. See [`docs/ML_ROADMAP.md`](docs/ML_ROADMAP.md).
 
 ## MIDI Motif Lab
 

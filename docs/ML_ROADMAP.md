@@ -19,11 +19,44 @@ A rule-based baseline is:
 - **Immediately shippable.** No training data, GPUs, or model hosting
   required — the whole app extra is `mido` + `numpy` + `streamlit`.
 
+## Stage 1.5 — ML readiness (implemented)
+
+Between the deterministic baseline and any actual training sits a layer of
+infrastructure that has to exist first. It's implemented now:
+
+- **Symbolic tokenization** (`creative_audio_lab.tokenization`): a
+  dependency-free REMI-style tokenizer maps `Note` events to and from flat
+  token sequences — the representation a symbolic sequence model trains
+  on. [MidiTok](https://github.com/Natooz/MidiTok) and
+  [symusic](https://github.com/Yikai-Liao/symusic) are supported as an
+  *optional* extra (`pip install -e ".[symbolic]"`) for tokenizing external
+  MIDI files with the reference REMI implementation; they are candidate
+  future preprocessing dependencies, not core requirements.
+- **Dataset provenance** (`creative_audio_lab.data.provenance`,
+  `.license_policy`): manifest entries carry source URL, license,
+  commercial-use/attribution flags, and tags, and validation refuses
+  fan-archive/unclear-rights material before it can reach a training
+  corpus.
+- **Backend interface** (`creative_audio_lab.models`): the app now
+  generates through a `GenerationBackend` abstraction.
+  `DeterministicBackend` wraps the existing parser + generators and remains
+  the default. `Text2MidiAdapter` and `MidiLlmAdapter` are placeholder
+  adapters marking where learned models plug in —
+  [Text2midi](https://github.com/AMAAI-Lab/Text2midi)-style
+  caption-conditioned transformers and MIDI-token LLMs are *candidate
+  future integration baselines*, not current dependencies; the adapters
+  import nothing heavy and raise `NotImplementedError` with integration
+  guidance.
+- **Preview/analysis** (`creative_audio_lab.preview`): track summaries and
+  piano-roll grids give both the app and future dataset tooling an
+  inspectable, dependency-light view of any note content.
+
 ## Planned progression
 
 1. **Dataset ingestion** — point `creative_audio_lab.data.midi_dataset_loader`
    at a local directory of MIDI files (see `DATASETS.md` for sourcing and
-   licensing guidance). Nothing is downloaded automatically.
+   licensing guidance), registered through the dataset manifest and passed
+   through provenance validation. Nothing is downloaded automatically.
 2. **MIDI parsing into note events** — already implemented in
    `creative_audio_lab.midi_parser`; reused unchanged by the training
    pipeline so generation and training share one canonical `Note`
@@ -48,8 +81,11 @@ A rule-based baseline is:
    vocabulary, as a stepping stone before a full neural model and a much
    stronger baseline to evaluate against.
 8. **Transformer-based symbolic MIDI generation** — a sequence model over
-   tokenized note events (pitch, duration, velocity, rest) trained on the
-   ingested corpus, generating full parts rather than just continuations.
+   tokenized note events trained on the ingested corpus, generating full
+   parts rather than just continuations. The Stage 1.5 tokenization layer
+   (internal REMI-style tokenizer, optional MidiTok/symusic) defines the
+   vocabulary; the Stage 1.5 backend adapters define where the model plugs
+   into the app.
 9. **Conditional generation** — condition the transformer on key, tempo,
    mood, genre, instrument set, and an optional seed motif, so prompts and
    UI controls steer generation the same way they do today.
