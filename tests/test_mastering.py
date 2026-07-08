@@ -1,9 +1,12 @@
 from pathlib import Path
 
-import numpy as np
-import soundfile as sf
+import pytest
 
-from mastering import master_track
+np = pytest.importorskip("numpy")
+sf = pytest.importorskip("soundfile")
+
+mastering = pytest.importorskip("mastering")
+master_track = mastering.master_track
 
 
 def test_master_track_creates_file_and_changes_loudness(tmp_path: Path):
