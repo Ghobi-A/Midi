@@ -1,5 +1,11 @@
 # Creative Audio Lab
 
+**What this is:** a symbolic-music engineering project — deterministic,
+rule-based MIDI generation with the architecture laid out for an ML
+pipeline to be added later. It is not a trained-model or applied-ML
+portfolio piece; today's generation logic is rules and music theory, not
+a learned model.
+
 **Prompt-to-MIDI Generator** — a prompt-conditioned symbolic music generator
 that creates DAW-ready MIDI arrangements instead of finished audio.
 
