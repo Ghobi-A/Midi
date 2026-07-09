@@ -72,6 +72,8 @@ packages = [
 creative_audio_lab = "src/creative_audio_lab"
 
 [tool.ruff.lint.per-file-ignores]
-# app.py inserts src/ onto sys.path before importing so it also runs without
-# an editable install; that necessarily puts imports after top-of-file code.
+# app.py and the scripts insert src/ onto sys.path before importing so they
+# also run without an editable install; that necessarily puts imports after
+# top-of-file code.
 "app.py" = ["E402"]
+"scripts/*.py" = ["E402"]

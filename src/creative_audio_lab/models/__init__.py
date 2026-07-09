@@ -1,10 +1,12 @@
-"""Generation backends (Stage 1.5 ML readiness).
+"""Generation backends (Stage 1.5 ML readiness + the Stage 2 n-gram baseline).
 
 Defines the :class:`~creative_audio_lab.models.base.GenerationBackend`
 interface, the default :class:`DeterministicBackend` wrapping the existing
-parser + generators, and placeholder adapters marking where learned models
-(Text2midi-style, MIDI-LLM-style) will plug in later. No model is trained,
-bundled, or downloaded by anything in this package.
+parser + generators, the Stage 2 :class:`NgramMelodyBackend` (a small
+statistical n-gram melody-continuation baseline, bootstrap-trained on
+synthetic data — see :mod:`.ngram_training`), and placeholder adapters
+marking where heavier learned models (Text2midi-style, MIDI-LLM-style) will
+plug in later. Nothing here downloads data or requires ML dependencies.
 """
 
 from __future__ import annotations
@@ -14,6 +16,8 @@ from typing import Dict, List, Type
 from .base import BackendInfo, GenerationBackend
 from .deterministic_backend import DeterministicBackend
 from .midi_llm_adapter import MidiLlmAdapter
+from .ngram_backend import NgramMelodyBackend
+from .ngram_model import NGramModel
 from .text2midi_adapter import Text2MidiAdapter
 
 DEFAULT_BACKEND_NAME = DeterministicBackend.name
@@ -21,6 +25,7 @@ DEFAULT_BACKEND_NAME = DeterministicBackend.name
 #: Registry of every known backend, keyed by its stable name.
 BACKEND_REGISTRY: Dict[str, Type[GenerationBackend]] = {
     DeterministicBackend.name: DeterministicBackend,
+    NgramMelodyBackend.name: NgramMelodyBackend,
     Text2MidiAdapter.name: Text2MidiAdapter,
     MidiLlmAdapter.name: MidiLlmAdapter,
 }
@@ -52,6 +57,8 @@ __all__ = [
     "BackendInfo",
     "GenerationBackend",
     "DeterministicBackend",
+    "NgramMelodyBackend",
+    "NGramModel",
     "Text2MidiAdapter",
     "MidiLlmAdapter",
     "BACKEND_REGISTRY",

@@ -62,12 +62,24 @@ with st.sidebar:
     backend_labels = {info.display_name: info.name for info in available_backends}
     backend_label = st.selectbox("Generation backend", list(backend_labels))
     backend_name = backend_labels.get(backend_label, DEFAULT_BACKEND_NAME)
+    if backend_name == "ngram_melody":
+        st.caption(
+            "⚠️ **Stage 2 baseline.** Chords/bass/drums stay rule-based; only the "
+            "melody is continued by a small n-gram model. The demo model is "
+            "bootstrap-trained on synthetic melodies from the deterministic "
+            "backend — it demonstrates the statistical pipeline, not learning "
+            "from real music."
+        )
     for info in future_backends:
         st.caption(f"🔒 **{info.display_name}** — scaffolded, not yet available")
     with st.expander("ML readiness"):
         st.markdown(
             "- The **deterministic backend** (rule-based parser + generators) is the "
             "current default — no trained model is involved.\n"
+            "- The **n-gram melody baseline** (Stage 2) is the first statistical "
+            "backend: it samples melody continuations from a trained n-gram model "
+            "over symbolic tokens, bootstrap-trained on synthetic data unless you "
+            "supply a licensed local corpus.\n"
             "- A **symbolic tokenization layer** (`creative_audio_lab.tokenization`) "
             "converts note events to/from REMI-style tokens, with an optional MidiTok "
             "adapter.\n"
@@ -75,8 +87,8 @@ with st.sidebar:
             "tracks source, license, and commercial-use rights before any training data "
             "is touched.\n"
             "- **Future model adapters** (Text2midi, MIDI-LLM) are scaffolded behind the "
-            "same `GenerationBackend` interface, so a learned model can plug in without "
-            "changing this app."
+            "same `GenerationBackend` interface, so a heavier learned model can plug in "
+            "without changing this app."
         )
 
     st.header("Controls")
@@ -121,9 +133,11 @@ if generate:
             instruments=instruments_choice or None,
         )
         st.session_state["arrangement"] = arrangement
+        st.session_state["arrangement_backend"] = backend_name
 
 if "arrangement" in st.session_state:
     arrangement = st.session_state["arrangement"]
+    arrangement_backend = st.session_state.get("arrangement_backend", DEFAULT_BACKEND_NAME)
     controls = arrangement.controls
 
     st.subheader("Arrangement summary")
@@ -186,11 +200,21 @@ if "arrangement" in st.session_state:
             st.caption(f"Intervals: {motif.intervals} · Durations: {motif.durations}")
 
     with st.expander("How this baseline works, and what comes next"):
-        st.markdown(
-            "This arrangement was produced by **deterministic, rule-based generators** "
-            "(chord progression → motif-based melody → bass → drums), not a trained model. "
-            "See the README's ML Roadmap section and `docs/ML_ROADMAP.md` for how this baseline "
-            "is designed to be replaced or augmented by learned models."
-        )
+        if arrangement_backend == "ngram_melody":
+            st.markdown(
+                "Chords, bass, drums, and structure in this arrangement were produced by the "
+                "**deterministic, rule-based generators**; the **melody** continues the opening "
+                "motif by sampling from a small **n-gram model over symbolic tokens** — the "
+                "Stage 2 statistical baseline. The demo model is bootstrap-trained on synthetic "
+                "melodies from the deterministic backend, so this demonstrates the training and "
+                "sampling machinery, not musical generalisation. See `docs/ML_ROADMAP.md`."
+            )
+        else:
+            st.markdown(
+                "This arrangement was produced by **deterministic, rule-based generators** "
+                "(chord progression → motif-based melody → bass → drums), not a trained model. "
+                "See the README's ML Roadmap section and `docs/ML_ROADMAP.md` for how this baseline "
+                "is designed to be replaced or augmented by learned models."
+            )
 else:
     st.info("Enter a prompt (or pick an example) and click Generate to create a MIDI arrangement.")
