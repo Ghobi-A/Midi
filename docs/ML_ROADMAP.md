@@ -53,6 +53,10 @@ infrastructure that has to exist first. It's implemented now:
 
 ## Planned progression
 
+Steps 7–10 below (the n-gram baseline onward) are planned in detail —
+dataset choice, tokenizer changes, evaluation additions, and go/no-go
+gates — in [`STAGE3_PLAN.md`](STAGE3_PLAN.md).
+
 1. **Dataset ingestion** — point `creative_audio_lab.data.midi_dataset_loader`
    at a local directory of MIDI files (see `DATASETS.md` for sourcing and
    licensing guidance), registered through the dataset manifest and passed
