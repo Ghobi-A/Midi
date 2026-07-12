@@ -1,10 +1,15 @@
+import pytest
+
 from creative_audio_lab.evaluation.metrics import (
+    controls_adherence,
+    distribution_similarity_scores,
     evaluate_arrangement,
     harmonic_fit_score,
     motif_retention_score,
     note_density,
     novelty_score,
     pitch_range,
+    plagiarism_score,
     repetition_score,
     rhythmic_complexity_score,
     scale_adherence_score,
@@ -92,3 +97,46 @@ def test_evaluate_arrangement_returns_expected_keys():
     }
     assert expected_keys <= metrics.keys()
     assert metrics["scale_adherence_score"] == 1.0
+
+
+def test_distribution_similarity_identical_sets_score_one():
+    notes = _notes([60, 62, 64, 65, 67, 69])
+    scores = distribution_similarity_scores(notes, list(notes))
+    assert scores == {
+        "pitch_class_similarity": pytest.approx(1.0),
+        "interval_similarity": pytest.approx(1.0),
+        "duration_similarity": pytest.approx(1.0),
+    }
+
+
+def test_distribution_similarity_disjoint_pitch_classes_score_zero():
+    a = _notes([60, 60, 60])  # only pitch class 0
+    b = _notes([61, 61, 61])  # only pitch class 1
+    scores = distribution_similarity_scores(a, b)
+    assert scores["pitch_class_similarity"] == 0.0
+    # Same rhythm on both sides, so duration similarity stays perfect.
+    assert scores["duration_similarity"] == 1.0
+
+
+def test_distribution_similarity_empty_reference_scores_zero():
+    notes = _notes([60, 62, 64])
+    scores = distribution_similarity_scores(notes, [])
+    assert set(scores.values()) == {0.0}
+
+
+def test_plagiarism_score_flags_a_copy_and_clears_unrelated_material():
+    candidate = _notes([60, 62, 64, 65, 67, 69, 71, 72])
+    unrelated = _notes([60, 40, 90, 30, 100, 45, 88, 51])
+    assert plagiarism_score(candidate, [list(candidate), unrelated]) == 1.0
+    assert plagiarism_score(candidate, [unrelated]) < 0.5
+    assert plagiarism_score(candidate, []) == 0.0
+
+
+@pytest.mark.parametrize("density", ["low", "medium", "high"])
+def test_controls_adherence_deterministic_output_satisfies_its_own_controls(density):
+    controls = parse_prompt("cinematic strings theme", density=density)
+    arrangement = build_arrangement(controls)
+    scores = controls_adherence(arrangement)
+    assert scores["scale_adherence"] >= 0.9
+    assert scores["density_in_band"] == 1.0
+    assert scores["melody_notes_per_bar"] > 0.0

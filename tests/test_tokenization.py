@@ -2,10 +2,12 @@ from creative_audio_lab.generators.arrangement import build_arrangement
 from creative_audio_lab.music_theory import Note
 from creative_audio_lab.prompt_parser import parse_prompt
 from creative_audio_lab.tokenization import (
+    BAR_ADVANCE_VALUE,
     SymbolicTokenizer,
     Token,
     TokenType,
     TokenizerConfig,
+    measure_round_trip,
     strings_to_tokens,
     token_from_string,
     tokens_to_strings,
@@ -140,3 +142,108 @@ def test_duration_is_capped_at_max_duration():
     tokens = SymbolicTokenizer(config).encode([Note(start=0.0, pitch=60, duration=16.0, velocity=96)])
     duration_token = next(t for t in tokens if t.type is TokenType.DURATION)
     assert duration_token.value == 8  # 2 beats * 4 steps/beat
+
+
+# ---------------------------------------------------------------------------
+# Relative (bar-advance) mode — the closed bar vocabulary for training
+# ---------------------------------------------------------------------------
+
+
+def test_relative_mode_emits_only_bar_advance_tokens():
+    tokenizer = SymbolicTokenizer(TokenizerConfig(relative_bars=True))
+    tokens = tokenizer.encode(SIMPLE_PHRASE)
+    bar_tokens = [t for t in tokens if t.type is TokenType.BAR]
+    assert [t.value for t in bar_tokens] == [BAR_ADVANCE_VALUE, BAR_ADVANCE_VALUE]
+
+
+def test_relative_mode_keeps_bar_vocabulary_closed_on_long_pieces():
+    # 300 bars of notes: absolute mode grows the vocab per bar, relative
+    # mode never emits anything but BAR_NONE.
+    long_piece = [Note(start=4.0 * bar, pitch=60, duration=1.0, velocity=96) for bar in range(300)]
+    strings = SymbolicTokenizer(TokenizerConfig(relative_bars=True)).encode_to_strings(long_piece)
+    bar_strings = {s for s in strings if s.startswith("BAR_")}
+    assert bar_strings == {f"BAR_{BAR_ADVANCE_VALUE}"}
+
+
+def test_relative_mode_preserves_empty_bars():
+    # A note in bar 0 and the next in bar 3: two empty bars in between must
+    # survive the round trip as repeated advance tokens.
+    notes = [
+        Note(start=0.0, pitch=60, duration=1.0, velocity=96),
+        Note(start=12.0, pitch=64, duration=1.0, velocity=96),
+    ]
+    tokenizer = SymbolicTokenizer(TokenizerConfig(relative_bars=True))
+    tokens = tokenizer.encode(notes)
+    assert sum(1 for t in tokens if t.type is TokenType.BAR) == 4  # bars 0..3
+    assert list(tokenizer.decode(tokens).notes) == notes
+
+
+def test_relative_mode_roundtrip_is_exact_on_grid_aligned_notes():
+    tokenizer = SymbolicTokenizer(TokenizerConfig(relative_bars=True))
+    decoded = tokenizer.decode(tokenizer.encode(SIMPLE_PHRASE))
+    assert list(decoded.notes) == SIMPLE_PHRASE
+
+
+def test_bar_advance_token_string_form_parses_back():
+    token = Token(TokenType.BAR, BAR_ADVANCE_VALUE)
+    assert token.to_string() == "BAR_NONE"
+    assert token_from_string("BAR_NONE") == token
+
+
+def test_decode_handles_mixed_absolute_and_relative_bar_tokens():
+    tokens = [
+        Token(TokenType.BAR, 5),
+        Token(TokenType.POSITION, 0),
+        Token(TokenType.NOTE_ON, 60),
+        Token(TokenType.VELOCITY, 24),
+        Token(TokenType.DURATION, 4),
+        Token(TokenType.BAR, BAR_ADVANCE_VALUE),  # advances to bar 6
+        Token(TokenType.POSITION, 0),
+        Token(TokenType.NOTE_ON, 62),
+        Token(TokenType.VELOCITY, 24),
+        Token(TokenType.DURATION, 4),
+    ]
+    decoded = SymbolicTokenizer().decode(tokens)
+    assert [note.start for note in decoded.notes] == [20.0, 24.0]
+
+
+# ---------------------------------------------------------------------------
+# Round-trip measurement — the gate before tokenizing any real corpus
+# ---------------------------------------------------------------------------
+
+
+def test_measure_round_trip_timing_is_lossless_on_generated_output():
+    # Generated melodies sit exactly on the 16th grid, so timing round-trips
+    # losslessly — but their velocities come from rng.randint and get rebinned
+    # by the default 32-bin config. measure_round_trip surfaced exactly that.
+    controls = parse_prompt("hopeful jrpg town theme, flute, 120 BPM")
+    arrangement = build_arrangement(controls)
+    melody = arrangement.parts["melody"]
+
+    report = measure_round_trip(melody)
+    assert report.onset_moved == 0
+    assert report.duration_changed == 0
+
+    lossless_velocity = SymbolicTokenizer(TokenizerConfig(velocity_bins=128))
+    exact_report = measure_round_trip(melody, lossless_velocity)
+    assert exact_report.exact_fraction == 1.0
+
+
+def test_measure_round_trip_counts_quantization_loss_on_off_grid_notes():
+    off_grid = [
+        Note(start=0.13, pitch=60, duration=0.9, velocity=97),  # off-grid onset/duration, odd velocity
+        Note(start=1.0, pitch=62, duration=1.0, velocity=96),   # exactly on grid
+    ]
+    report = measure_round_trip(off_grid)
+    assert report.total_notes == 2
+    assert report.exact_notes == 1
+    assert report.onset_moved == 1
+    assert report.duration_changed == 1
+    assert report.velocity_changed == 1
+    assert report.exact_fraction == 0.5
+
+
+def test_measure_round_trip_empty_input():
+    report = measure_round_trip([])
+    assert report.total_notes == 0
+    assert report.exact_fraction == 1.0

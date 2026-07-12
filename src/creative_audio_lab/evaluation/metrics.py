@@ -1,9 +1,14 @@
 """Lightweight evaluation metrics for generated MIDI.
 
-None of these require a trained model or external corpus — they are simple,
-explainable statistics intended as an honest baseline that a future
-ML-based evaluator (e.g. a learned harmonic-fit or usability model) can be
-compared against.
+None of these require a trained model — they are simple, explainable
+statistics intended as an honest baseline that a future ML-based evaluator
+(e.g. a learned harmonic-fit or usability model) can be compared against.
+The reference-based metrics (:func:`distribution_similarity_scores`,
+:func:`plagiarism_score`) compare against any note sets you supply — a
+held-out corpus split, training pieces — but never load or require one
+themselves. Held-out token perplexity deliberately does *not* live here:
+it requires a trained model, and this module's contract is that nothing in
+it does (see docs/STAGE3_PLAN.md, section 4).
 """
 
 from __future__ import annotations
@@ -118,6 +123,92 @@ def motif_retention_score(original: Sequence[Note], variation: Sequence[Note], n
     return len(original_ngrams & variation_ngrams) / len(original_ngrams)
 
 
+def _histogram_overlap(a_values: Sequence, b_values: Sequence) -> float:
+    """Overlap of two empirical distributions: 1.0 = identical, 0.0 = disjoint.
+
+    Both value sequences are treated as categorical (durations should already
+    be grid-quantized, which everything the tokenizer touches is).
+    """
+    if not a_values or not b_values:
+        return 0.0
+    a_counts = Counter(a_values)
+    b_counts = Counter(b_values)
+    a_total = len(a_values)
+    b_total = len(b_values)
+    return sum(
+        min(a_counts[key] / a_total, b_counts[key] / b_total)
+        for key in a_counts.keys() | b_counts.keys()
+    )
+
+
+def distribution_similarity_scores(notes: Sequence[Note], reference: Sequence[Note]) -> Dict[str, float]:
+    """Compare ``notes`` against a reference note set on three distributions.
+
+    Returns per-feature histogram overlaps (pitch class, melodic interval,
+    duration), each in ``[0, 1]``. This is what "statistically resembles the
+    reference material" means for a generated set: pass held-out corpus
+    notes as ``reference`` and expect scores inside the band that held-out
+    corpus pieces score against *each other*.
+    """
+    return {
+        "pitch_class_similarity": _histogram_overlap(
+            [note.pitch % 12 for note in notes], [note.pitch % 12 for note in reference]
+        ),
+        "interval_similarity": _histogram_overlap(extract_intervals(notes), extract_intervals(reference)),
+        "duration_similarity": _histogram_overlap(
+            [note.duration for note in notes], [note.duration for note in reference]
+        ),
+    }
+
+
+def plagiarism_score(candidate: Sequence[Note], corpus_pieces: Sequence[Sequence[Note]], n: int = 3) -> float:
+    """How much of ``candidate``'s melodic material appears in its closest corpus piece.
+
+    Reuses :func:`motif_retention_score` with the roles swapped: the score is
+    the *maximum* fraction of the candidate's interval n-grams found in any
+    single corpus piece. Near 1.0 means the candidate is substantially a copy
+    of one training piece — a memorization (and, for corpora of copyrighted
+    works, a rights) red flag, whereas every other metric here would score a
+    perfect copy flatteringly.
+    """
+    if not corpus_pieces:
+        return 0.0
+    return max(motif_retention_score(candidate, piece, n=n) for piece in corpus_pieces)
+
+
+# Acceptable melody notes-per-bar per requested density. Derived from the
+# deterministic generator's RHYTHM_TEMPLATES (3/5/7 slots per bar for
+# low/medium/high) plus headroom for the passing tones it inserts at
+# medium/high density. Bands overlap deliberately — they express tolerance,
+# not a classifier.
+DENSITY_BANDS: Dict[str, Tuple[float, float]] = {
+    "low": (1.0, 4.5),
+    "medium": (3.5, 8.5),
+    "high": (5.5, float("inf")),
+}
+
+
+def controls_adherence(arrangement: "Arrangement") -> Dict[str, float]:
+    """Score an arrangement against its *own* requested controls.
+
+    This is the style-conditioning check for any generative backend: did
+    "sad ballad, low density" actually come out sparse and in the requested
+    scale. Deterministic output satisfies these by construction; a learned
+    model has to earn them.
+    """
+    melody = arrangement.parts.get("melody", [])
+    controls = arrangement.controls
+    scale_pcs = scale_pitch_classes(controls.key, controls.mode)
+    notes_per_bar = note_density(melody, arrangement.bars)
+    low, high = DENSITY_BANDS.get(controls.density, DENSITY_BANDS["medium"])
+
+    return {
+        "scale_adherence": scale_adherence_score(melody, scale_pcs),
+        "melody_notes_per_bar": notes_per_bar,
+        "density_in_band": 1.0 if low <= notes_per_bar <= high else 0.0,
+    }
+
+
 def evaluate_arrangement(arrangement: "Arrangement") -> Dict[str, float]:
     """Compute the full evaluation-metric suite for a generated :class:`Arrangement`.
 
@@ -151,5 +242,9 @@ __all__ = [
     "rhythmic_complexity_score",
     "novelty_score",
     "motif_retention_score",
+    "distribution_similarity_scores",
+    "plagiarism_score",
+    "DENSITY_BANDS",
+    "controls_adherence",
     "evaluate_arrangement",
 ]

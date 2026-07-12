@@ -207,6 +207,25 @@ beat (the deterministic generator plus `evaluation.metrics`). Stage 1.5
 puts those prerequisites in place so a model can be added honestly — not
 bolted on. See [`docs/ML_ROADMAP.md`](docs/ML_ROADMAP.md).
 
+## Stage 2: n-gram melody baseline
+
+The first statistical generator, and deliberately a modest one:
+`NgramMelodyBackend` fits token-level n-gram statistics on melodies
+bootstrapped from the deterministic generator itself, then continues the
+deterministic melody's opening bar by sampling, while chords, bass, and
+drums stay rule-based. No neural network, no external corpus, no new
+dependencies — training happens in-process in well under a second.
+
+It is a *pipeline* baseline, not a quality upgrade: statistics learned from
+the rule-based generator's output cannot know more than the rules do. What
+it buys is that the full tokenize → train → sample → decode → evaluate loop
+now runs end to end, `evaluation.compare_backends` scores it against the
+deterministic backend on a fixed held-out prompt list, and its held-out
+NLL (`TokenNgramModel.avg_negative_log_likelihood`) is the number any
+future trained model has to beat. The decisions for that next step —
+dataset, tokenizer granularity, evaluation gates — are laid out in
+[`docs/STAGE3_PLAN.md`](docs/STAGE3_PLAN.md).
+
 ## MIDI Motif Lab
 
 A supporting module (`motif_detection.py` + `motif_variation.py`) for

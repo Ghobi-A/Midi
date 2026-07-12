@@ -24,8 +24,8 @@ PROMPT = "dark orchestral boss battle theme, 140 BPM, brass ostinato, strings, p
 # ---------------------------------------------------------------------------
 
 
-def test_registry_contains_all_three_backends():
-    assert set(BACKEND_REGISTRY) == {"deterministic", "text2midi", "midi_llm"}
+def test_registry_contains_all_registered_backends():
+    assert set(BACKEND_REGISTRY) == {"deterministic", "ngram", "text2midi", "midi_llm"}
 
 
 def test_default_backend_is_deterministic():
@@ -42,6 +42,7 @@ def test_list_backends_reports_availability():
     infos = {info.name: info for info in list_backends()}
     assert all(isinstance(info, BackendInfo) for info in infos.values())
     assert infos["deterministic"].available is True
+    assert infos["ngram"].available is True
     assert infos["text2midi"].available is False
     assert infos["midi_llm"].available is False
 

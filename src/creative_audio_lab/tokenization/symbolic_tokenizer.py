@@ -10,11 +10,27 @@ time-shift deltas): an optional metadata header (``TEMPO``,
 Timing is quantized to ``positions_per_beat`` steps per beat (default 4, a
 16th-note grid) and velocity to ``velocity_bins`` bins (default 32, i.e.
 bin width 4). Notes that already sit on the grid — which everything the
-deterministic generators emit does — round-trip exactly.
+deterministic generators emit does — round-trip with exact timing;
+velocities only round-trip exactly when they're bin-aligned (or at the
+lossless ``velocity_bins=128``), and the deterministic melody generator's
+randomized velocities are not. :func:`measure_round_trip` quantifies
+exactly this kind of loss for any note set and config.
+
+Bar tokens come in two modes (``TokenizerConfig.relative_bars``):
+
+- absolute (default): ``BAR_<index>`` carries the absolute bar number.
+  Convenient for inspection, but the vocabulary grows with piece length —
+  a 300-bar corpus piece emits ``BAR_299``, a token a model trained on
+  shorter pieces has never seen.
+- relative: one ``BAR_NONE`` bar-advance token per bar boundary crossed
+  (the REMI convention), so the bar vocabulary is closed regardless of
+  piece length. This is the mode any training corpus must use — see
+  docs/STAGE3_PLAN.md.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
@@ -22,6 +38,9 @@ from ..music_theory import Note
 from .token_types import Token, TokenType, strings_to_tokens, tokens_to_strings
 
 DEFAULT_VELOCITY = 96
+
+#: The value carried by a bar-advance token (``BAR_NONE``) in relative mode.
+BAR_ADVANCE_VALUE = "NONE"
 
 
 @dataclass(frozen=True)
@@ -41,12 +60,18 @@ class TokenizerConfig:
     max_duration_beats:
         Durations longer than this are truncated so the DURATION vocabulary
         stays bounded.
+    relative_bars:
+        When ``True``, bar changes are encoded as one ``BAR_NONE`` advance
+        token per bar crossed instead of an absolute ``BAR_<index>``, keeping
+        the bar vocabulary closed for training. Decoding accepts both forms
+        regardless of this setting.
     """
 
     beats_per_bar: float = 4.0
     positions_per_beat: int = 4
     velocity_bins: int = 32
     max_duration_beats: float = 8.0
+    relative_bars: bool = False
 
     @property
     def steps_per_bar(self) -> int:
@@ -114,7 +139,11 @@ class SymbolicTokenizer:
             total_steps = round(note.start * cfg.positions_per_beat)
             bar, position = divmod(total_steps, cfg.steps_per_bar)
             if bar != current_bar:
-                tokens.append(Token(TokenType.BAR, bar))
+                if cfg.relative_bars:
+                    previous = -1 if current_bar is None else current_bar
+                    tokens.extend(Token(TokenType.BAR, BAR_ADVANCE_VALUE) for _ in range(bar - previous))
+                else:
+                    tokens.append(Token(TokenType.BAR, bar))
                 current_bar = bar
                 current_position = None
             if position != current_position:
@@ -159,6 +188,7 @@ class SymbolicTokenizer:
         time_signature: Optional[str] = None
 
         current_bar = 0
+        bar_token_seen = False
         current_position = 0
         pending_pitch: Optional[int] = None
         pending_velocity: Optional[int] = None
@@ -171,7 +201,12 @@ class SymbolicTokenizer:
             elif token.type is TokenType.PROGRAM:
                 program = int(token.value)
             elif token.type is TokenType.BAR:
-                current_bar = int(token.value)
+                if token.value == BAR_ADVANCE_VALUE:
+                    # Bar-advance: the first one lands on bar 0.
+                    current_bar = current_bar + 1 if bar_token_seen else 0
+                else:
+                    current_bar = int(token.value)
+                bar_token_seen = True
                 current_position = 0
             elif token.type is TokenType.POSITION:
                 current_position = int(token.value)
@@ -205,4 +240,63 @@ class SymbolicTokenizer:
         return self.decode(strings_to_tokens(strings))
 
 
-__all__ = ["TokenizerConfig", "DecodedSequence", "SymbolicTokenizer", "DEFAULT_VELOCITY"]
+@dataclass(frozen=True)
+class RoundTripReport:
+    """Measured encode→decode loss for a set of notes under one config.
+
+    The tokenizer never drops notes, so loss shows up as quantization:
+    onsets snapped to the position grid, durations snapped/truncated, and
+    velocities binned. docs/STAGE3_PLAN.md makes an acceptable-loss
+    threshold on the actual corpus a go/no-go gate before training — this
+    is the measurement behind that gate.
+    """
+
+    total_notes: int
+    exact_notes: int
+    onset_moved: int
+    duration_changed: int
+    velocity_changed: int
+
+    @property
+    def exact_fraction(self) -> float:
+        """Fraction of notes that survived the round trip unchanged."""
+        if self.total_notes == 0:
+            return 1.0
+        return self.exact_notes / self.total_notes
+
+
+def measure_round_trip(notes: Sequence[Note], tokenizer: Optional[SymbolicTokenizer] = None) -> RoundTripReport:
+    """Encode then decode ``notes`` and count what quantization changed."""
+    tok = tokenizer or SymbolicTokenizer()
+    decoded = tok.decode(tok.encode(notes)).notes
+    original = sorted(notes, key=lambda n: (n.start, n.pitch))
+    roundtripped = sorted(decoded, key=lambda n: (n.start, n.pitch))
+
+    exact = onset_moved = duration_changed = velocity_changed = 0
+    for before, after in zip(original, roundtripped):
+        moved = not math.isclose(before.start, after.start, rel_tol=1e-9, abs_tol=1e-9)
+        stretched = not math.isclose(before.duration, after.duration, rel_tol=1e-9, abs_tol=1e-9)
+        rebinned = before.velocity != after.velocity
+        onset_moved += moved
+        duration_changed += stretched
+        velocity_changed += rebinned
+        exact += not (moved or stretched or rebinned)
+
+    return RoundTripReport(
+        total_notes=len(original),
+        exact_notes=exact,
+        onset_moved=onset_moved,
+        duration_changed=duration_changed,
+        velocity_changed=velocity_changed,
+    )
+
+
+__all__ = [
+    "TokenizerConfig",
+    "DecodedSequence",
+    "SymbolicTokenizer",
+    "RoundTripReport",
+    "measure_round_trip",
+    "DEFAULT_VELOCITY",
+    "BAR_ADVANCE_VALUE",
+]

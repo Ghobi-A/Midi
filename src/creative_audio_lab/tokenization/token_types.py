@@ -31,7 +31,8 @@ class Token:
     """One symbolic token: a :class:`TokenType` plus its value.
 
     Values are ``int`` for every type except :attr:`TokenType.TIME_SIGNATURE`,
-    which uses a string like ``"4/4"``.
+    which uses a string like ``"4/4"``, and :attr:`TokenType.BAR` in relative
+    mode, which uses the string ``"NONE"`` (a bar-advance token, ``BAR_NONE``).
     """
 
     type: TokenType

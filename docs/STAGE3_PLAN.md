@@ -6,8 +6,12 @@ what tokenization granularity, evaluated how, and in what order. A wrong
 choice here wastes an entire training run, or worse, quietly produces a
 model overfit to a narrow style that the evaluation suite can't detect.
 
-Everything below is a **decision, not implemented work**. Where a
-recommendation depends on code, it cites the module that actually exists.
+This started as a pure decision document. The pieces that have since been
+implemented — the Stage 2 n-gram baseline, the closed bar vocabulary, the
+round-trip measurement, and the evaluation additions — are marked
+*(implemented)* inline; everything else remains a decision, not a claim of
+built work. Where a recommendation depends on code, it cites the module
+that actually exists.
 
 ## 1. Where the repo actually stands
 
@@ -17,13 +21,16 @@ recommendation depends on code, it cites the module that actually exists.
   tokenizer (`creative_audio_lab.tokenization`), the dataset provenance
   registry (`creative_audio_lab.data`), the `GenerationBackend` interface
   (`creative_audio_lab.models`), and the preview layer.
-- **Stage 2 (not built):** the Markov/n-gram continuation baseline is step 7
-  of [`ML_ROADMAP.md`](ML_ROADMAP.md)'s planned progression. No statistical
-  or learned backend exists in the repo today — `creative_audio_lab.models`
-  contains the deterministic backend and two placeholder adapters that raise
-  `NotImplementedError`. The staged plan in section 5 treats the n-gram
-  baseline as the first gate, because it exercises the whole
-  tokenize→train→generate→evaluate loop at near-zero compute cost.
+- **Stage 2 (implemented):** the Markov/n-gram continuation baseline —
+  step 7 of [`ML_ROADMAP.md`](ML_ROADMAP.md)'s progression — now exists as
+  `creative_audio_lab.models.NgramMelodyBackend`: token-level n-gram
+  statistics fit in-process on melodies bootstrapped from the deterministic
+  generator, continuing the deterministic melody's opening bar while
+  chords/bass/drums stay rule-based. It exercises the whole
+  tokenize→train→generate→evaluate loop at near-zero compute cost and
+  provides `avg_negative_log_likelihood` — the held-out NLL bar the Stage
+  3a model must beat. It is a pipeline baseline, not a quality upgrade:
+  synthetic-on-synthetic statistics cannot exceed their source.
 - **Evaluation (implemented, but scoped):**
   `creative_audio_lab.evaluation.metrics` was built as a corpus-free,
   model-free statistics suite (its own docstring: "None of these require a
@@ -85,14 +92,17 @@ grid and round-trips losslessly. Real corpus MIDI does not have that
 property. Concretely, on real files the current implementation
 (`tokenization/symbolic_tokenizer.py`):
 
-1. **Emits an open vocabulary for bars.** `encode` writes `BAR_<index>` with
-   the *absolute* bar number. Synthetic data is 8–16 bars, so the issue is
-   invisible today; a 300-bar corpus piece emits `BAR_299`, a token a model
-   trained on shorter pieces has never seen, and the vocabulary grows
-   without bound. **This must change before any training run** — to a
-   single bar-advance token (the actual REMI convention) or
-   segment-relative bar indices. This is the one mandatory pre-pilot
-   tokenizer fix.
+1. **Emits an open vocabulary for bars** *(fixed)*. `encode` writes
+   `BAR_<index>` with the *absolute* bar number by default. Synthetic data
+   is 8–16 bars, so the issue is invisible today; a 300-bar corpus piece
+   emits `BAR_299`, a token a model trained on shorter pieces has never
+   seen, and the vocabulary grows without bound. This was the one mandatory
+   pre-pilot tokenizer fix, and it is now implemented:
+   `TokenizerConfig(relative_bars=True)` encodes one `BAR_NONE` bar-advance
+   token per bar crossed (the actual REMI convention), keeping the bar
+   vocabulary closed; decoding accepts both forms. All Stage 2+ training
+   material uses relative mode
+   (`models.ngram_backend.TRAINING_TOKENIZER_CONFIG`).
 2. **Cannot represent tempo or meter changes.** `TEMPO` and `TIME_SIGNATURE`
    are single optional header tokens; `encode` accepts one scalar of each
    and `decode` keeps whichever it saw last. Mid-piece tempo maps
@@ -109,8 +119,15 @@ property. Concretely, on real files the current implementation
    quantized score-like data, lossy on performance MIDI. For corpus work,
    raise to `positions_per_beat=12` (divisible by 3 and 4, so both straight
    16ths and triplets survive) via the existing `TokenizerConfig` — and
-   validate the choice by *measuring* round-trip loss on the actual corpus
-   (encode→decode, count moved/merged notes), not by assuming.
+   validate the choice by *measuring* round-trip loss on the actual corpus,
+   not by assuming. The measurement now exists:
+   `tokenization.measure_round_trip` reports moved onsets, changed
+   durations, rebinned velocities, and the exact-note fraction for any note
+   set under any config. It has already earned its keep: it surfaced that
+   the deterministic melody generator's randomized velocities don't survive
+   the default 32-bin velocity quantization (timing does) — so the
+   `velocity_bins` choice gets revisited on real corpus data alongside
+   `positions_per_beat`, with numbers instead of assumptions.
 5. **Has no drum or track awareness.** One optional `PROGRAM` header covers
    the whole sequence, and nothing distinguishes channel-10 percussion, so a
    kick drum (pitch 36) would be modeled as a C2 bass note. The melody-only
@@ -135,29 +152,35 @@ notion of whether the output matched the request, and no protection against
 the flattering failure mode — a model that copies its training data scores
 beautifully on every current metric.
 
-Smallest additions that close the gap, in the same dependency-light style:
+Smallest additions that close the gap, in the same dependency-light style
+(all four are now implemented):
 
-- **Corpus-distribution similarity.** Compare a *set* of generated melodies
-  against a held-out corpus split on pitch-class, melodic-interval, and
-  duration distributions (one small histogram-distance helper; the
-  interval machinery already exists in `motif_detection.extract_intervals`
-  and the entropy/counter plumbing in `metrics._normalized_entropy`).
-  This is what "sounds like the corpus, statistically" means here.
-- **Controls adherence.** One function taking an `Arrangement` and scoring
-  its output against its *own* `controls`: scale adherence against the
-  requested key/mode (already computable via `scale_adherence_score` +
-  `scale_pitch_classes`), and measured note density against the requested
-  density band. This is the style-conditioning check: did "sad ballad, low
-  density" actually come out sparse and minor.
-- **Training-set plagiarism check.** Reuse the existing
-  `motif_retention_score` with the roles swapped: score generated output
-  against its nearest training pieces. High retention against training data
-  = memorization. For POP909 — whose underlying songs are copyrighted —
-  this doubles as a rights guardrail, not just a quality metric.
-- **A fixed held-out prompt list**, checked into the repo as data, so the
-  deterministic backend, the Stage 2 n-gram baseline, and any trained model
-  are always compared on *identical* prompts rather than whatever was typed
-  during development.
+- **Corpus-distribution similarity** (`metrics.distribution_similarity_scores`).
+  Compare a *set* of generated melodies against a held-out corpus split on
+  pitch-class, melodic-interval, and duration distributions (one small
+  histogram-overlap helper; the interval machinery already existed in
+  `motif_detection.extract_intervals`). This is what "sounds like the
+  corpus, statistically" means here.
+- **Controls adherence** (`metrics.controls_adherence`). One function taking
+  an `Arrangement` and scoring its output against its *own* `controls`:
+  scale adherence against the requested key/mode, and measured note density
+  against the requested density band (`metrics.DENSITY_BANDS`, derived from
+  the deterministic generator's rhythm templates). This is the
+  style-conditioning check: did "sad ballad, low density" actually come out
+  sparse and minor.
+- **Training-set plagiarism check** (`metrics.plagiarism_score`). Reuses the
+  existing `motif_retention_score` with the roles swapped: the score is the
+  maximum fraction of the candidate's n-grams found in any single corpus
+  piece. High retention against training data = memorization. For POP909 —
+  whose underlying songs are copyrighted — this doubles as a rights
+  guardrail, not just a quality metric.
+- **A fixed held-out prompt list** (`evaluation.prompts.HELD_OUT_PROMPTS`),
+  checked into the repo as data, so the deterministic backend, the Stage 2
+  n-gram baseline, and any trained model are always compared on *identical*
+  prompts rather than whatever was typed during development — the
+  comparison itself is `evaluation.comparison.compare_backends`. The
+  bootstrap prompts the n-gram baseline trains on are a disjoint list, and
+  a test enforces the disjointness.
 
 What deliberately does **not** go in `metrics.py`: held-out token
 perplexity/NLL. It requires a trained model, and the module's documented
@@ -169,15 +192,16 @@ training code, reported alongside these metrics rather than inside them.
 Each stage is a gate: the next one starts only if the previous one's
 "working" criteria hold.
 
-**Stage 2 — n-gram baseline (prerequisite, currently unbuilt).**
+**Stage 2 — n-gram baseline (implemented: `models.NgramMelodyBackend`).**
 An n-gram melody-continuation backend behind `GenerationBackend`, trained on
 output sampled from the deterministic generator itself. Its purpose is not
 musical quality — synthetic-on-synthetic statistics can't exceed their
 source. Its purpose is to exercise tokenizer → training data → sampling →
 `evaluate_arrangement` end to end at near-zero compute, and to produce the
-held-out NLL number any neural model must beat. If the eval harness can't
-cleanly compare deterministic vs n-gram, that's a bug found for free instead
-of during a GPU run.
+held-out NLL number (`TokenNgramModel.avg_negative_log_likelihood`) any
+neural model must beat. If the eval harness can't cleanly compare
+deterministic vs n-gram, that's a bug found for free instead of during a
+GPU run.
 
 **Stage 3a — smallest viable trained model.**
 - **Scope:** melody only, single style (`ballad`), POP909 melody tracks.

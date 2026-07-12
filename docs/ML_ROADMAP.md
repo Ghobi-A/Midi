@@ -80,10 +80,13 @@ gates — in [`STAGE3_PLAN.md`](STAGE3_PLAN.md).
    `GenerationControls` (mood, style, energy, instrumentation), while
    keeping the same typed output so every downstream generator is
    unaffected.
-7. **Markov / n-gram continuation baseline** — a first learned generator:
-   sample melodic continuations from n-gram statistics over the motif
-   vocabulary, as a stepping stone before a full neural model and a much
-   stronger baseline to evaluate against.
+7. **Markov / n-gram continuation baseline** *(implemented — Stage 2)* — a
+   first statistical generator: `creative_audio_lab.models.NgramMelodyBackend`
+   samples melodic continuations from n-gram statistics over the internal
+   token vocabulary, bootstrapped from the deterministic generator's own
+   output. It exists to exercise the tokenize→train→sample→evaluate loop
+   and to set the held-out NLL bar a neural model must beat — not to sound
+   better than the rules it learned from.
 8. **Transformer-based symbolic MIDI generation** — a sequence model over
    tokenized note events trained on the ingested corpus, generating full
    parts rather than just continuations. The Stage 1.5 tokenization layer
