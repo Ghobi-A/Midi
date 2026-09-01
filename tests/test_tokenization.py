@@ -140,3 +140,51 @@ def test_duration_is_capped_at_max_duration():
     tokens = SymbolicTokenizer(config).encode([Note(start=0.0, pitch=60, duration=16.0, velocity=96)])
     duration_token = next(t for t in tokens if t.type is TokenType.DURATION)
     assert duration_token.value == 8  # 2 beats * 4 steps/beat
+
+
+# ---------------------------------------------------------------------------
+# Time signatures actually change bar length
+# ---------------------------------------------------------------------------
+
+
+def test_beats_per_bar_for_common_signatures():
+    from creative_audio_lab.tokenization import beats_per_bar_for
+
+    assert beats_per_bar_for("4/4") == 4.0
+    assert beats_per_bar_for("3/4") == 3.0
+    assert beats_per_bar_for("6/8") == 3.0
+    assert beats_per_bar_for("7/8") == 3.5
+
+
+def test_beats_per_bar_for_rejects_nonsense():
+    from creative_audio_lab.tokenization import beats_per_bar_for
+
+    for bad in ("common time", "4-4", "0/4", "4/0"):
+        with pytest.raises(ValueError):
+            beats_per_bar_for(bad)
+
+
+def test_encode_in_three_four_starts_bar_two_on_beat_three():
+    tokenizer = SymbolicTokenizer()
+    notes = [
+        Note(start=0.0, pitch=60, duration=1.0),
+        Note(start=3.0, pitch=62, duration=1.0),  # first beat of bar 2 in 3/4
+    ]
+    tokens = tokenizer.encode(notes, time_signature="3/4")
+    bars = [t.value for t in tokens if t.type is TokenType.BAR]
+    assert bars == [0, 1]
+    # In 4/4 the same note is still inside bar 0.
+    assert [t.value for t in tokenizer.encode(notes) if t.type is TokenType.BAR] == [0]
+
+
+def test_three_four_round_trips_through_encode_and_decode():
+    tokenizer = SymbolicTokenizer()
+    notes = [
+        Note(start=0.0, pitch=60, duration=1.0, velocity=96),
+        Note(start=3.0, pitch=62, duration=1.0, velocity=96),
+        Note(start=6.0, pitch=64, duration=1.0, velocity=96),
+    ]
+    decoded = tokenizer.decode(tokenizer.encode(notes, time_signature="3/4"))
+    assert decoded.time_signature == "3/4"
+    assert [note.start for note in decoded.notes] == [0.0, 3.0, 6.0]
+    assert [note.pitch for note in decoded.notes] == [60, 62, 64]

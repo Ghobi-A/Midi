@@ -11,6 +11,13 @@ Timing is quantized to ``positions_per_beat`` steps per beat (default 4, a
 16th-note grid) and velocity to ``velocity_bins`` bins (default 32, i.e.
 bin width 4). Notes that already sit on the grid — which everything the
 deterministic generators emit does — round-trip exactly.
+
+Bar length follows the time signature: passing ``time_signature="3/4"`` to
+:meth:`SymbolicTokenizer.encode` makes bars three quarter-notes long for
+that call, and :meth:`SymbolicTokenizer.decode` switches bar length when it
+reads a ``TIME_SIGNATURE`` token. Without one, the config's ``beats_per_bar``
+(4.0) applies. A ``TIME_SIGNATURE`` token is therefore a real timing
+instruction, not inert metadata.
 """
 
 from __future__ import annotations
@@ -22,6 +29,27 @@ from ..music_theory import Note
 from .token_types import Token, TokenType, strings_to_tokens, tokens_to_strings
 
 DEFAULT_VELOCITY = 96
+
+
+def beats_per_bar_for(time_signature: str) -> float:
+    """Bar length in quarter-note beats for a ``"num/den"`` time signature.
+
+    ``"4/4"`` → 4.0, ``"3/4"`` → 3.0, ``"6/8"`` → 3.0, ``"7/8"`` → 3.5.
+
+    Raises
+    ------
+    ValueError
+        If the string is not ``num/den`` with positive integers.
+    """
+    numerator, _, denominator = str(time_signature).partition("/")
+    try:
+        num = int(numerator)
+        den = int(denominator)
+    except ValueError:
+        raise ValueError(f"Not a time signature: {time_signature!r}") from None
+    if num <= 0 or den <= 0:
+        raise ValueError(f"Not a time signature: {time_signature!r}")
+    return num * 4.0 / den
 
 
 @dataclass(frozen=True)
@@ -51,6 +79,12 @@ class TokenizerConfig:
     @property
     def steps_per_bar(self) -> int:
         return round(self.beats_per_bar * self.positions_per_beat)
+
+    def steps_per_bar_for(self, time_signature: Optional[str]) -> int:
+        """Steps per bar under ``time_signature`` (the config default when ``None``)."""
+        if time_signature is None:
+            return self.steps_per_bar
+        return max(round(beats_per_bar_for(time_signature) * self.positions_per_beat), 1)
 
     @property
     def velocity_bin_width(self) -> int:
@@ -107,12 +141,13 @@ class SymbolicTokenizer:
             tokens.append(Token(TokenType.PROGRAM, int(program)))
 
         max_duration_steps = max(round(cfg.max_duration_beats * cfg.positions_per_beat), 1)
+        steps_per_bar = cfg.steps_per_bar_for(time_signature)
         current_bar: Optional[int] = None
         current_position: Optional[int] = None
 
         for note in sorted(notes, key=lambda n: (n.start, n.pitch)):
             total_steps = round(note.start * cfg.positions_per_beat)
-            bar, position = divmod(total_steps, cfg.steps_per_bar)
+            bar, position = divmod(total_steps, steps_per_bar)
             if bar != current_bar:
                 tokens.append(Token(TokenType.BAR, bar))
                 current_bar = bar
@@ -158,6 +193,7 @@ class SymbolicTokenizer:
         program: Optional[int] = None
         time_signature: Optional[str] = None
 
+        steps_per_bar = cfg.steps_per_bar
         current_bar = 0
         current_position = 0
         pending_pitch: Optional[int] = None
@@ -168,6 +204,8 @@ class SymbolicTokenizer:
                 tempo = int(token.value)
             elif token.type is TokenType.TIME_SIGNATURE:
                 time_signature = str(token.value)
+                # A time signature changes bar length for everything after it.
+                steps_per_bar = cfg.steps_per_bar_for(time_signature)
             elif token.type is TokenType.PROGRAM:
                 program = int(token.value)
             elif token.type is TokenType.BAR:
@@ -181,7 +219,7 @@ class SymbolicTokenizer:
             elif token.type is TokenType.VELOCITY:
                 pending_velocity = int(token.value) * cfg.velocity_bin_width
             elif token.type is TokenType.DURATION and pending_pitch is not None:
-                start_steps = current_bar * cfg.steps_per_bar + current_position
+                start_steps = current_bar * steps_per_bar + current_position
                 notes.append(
                     Note(
                         start=start_steps / cfg.positions_per_beat,
@@ -205,4 +243,10 @@ class SymbolicTokenizer:
         return self.decode(strings_to_tokens(strings))
 
 
-__all__ = ["TokenizerConfig", "DecodedSequence", "SymbolicTokenizer", "DEFAULT_VELOCITY"]
+__all__ = [
+    "TokenizerConfig",
+    "DecodedSequence",
+    "SymbolicTokenizer",
+    "DEFAULT_VELOCITY",
+    "beats_per_bar_for",
+]
