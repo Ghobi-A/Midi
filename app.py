@@ -29,17 +29,66 @@ from creative_audio_lab.prompt_parser import STYLE_PRESETS
 
 #: Environment variable naming a trained melody artefact to load by default.
 NGRAM_MODEL_ENV = "CREATIVE_AUDIO_LAB_NGRAM_MODEL"
+#: Directory that sidebar-supplied model paths are confined to.
+MODEL_ROOT_ENV = "CREATIVE_AUDIO_LAB_MODEL_ROOT"
+
+
+class ModelPathRejected(ValueError):
+    """A sidebar-supplied model path escaped the allowed directory."""
+
+
+def model_root(env: dict = None) -> Path:
+    """Directory that sidebar-supplied model paths must live under.
+
+    Defaults to the working directory the app was launched from; override
+    with ``CREATIVE_AUDIO_LAB_MODEL_ROOT`` to keep artefacts elsewhere.
+    """
+    env = os.environ if env is None else env
+    configured = (env.get(MODEL_ROOT_ENV) or "").strip()
+    return (Path(configured).expanduser() if configured else Path.cwd()).resolve()
 
 
 def resolve_ngram_model_path(user_input: str = "", env: dict = None) -> Path | None:
     """Resolve which melody model the n-gram backend should load.
 
-    The sidebar field wins over the environment variable; an empty value at
-    both levels means "use the synthetic bootstrap model".
+    The two sources are *not* equally trusted, and that is the whole point
+    of this function. ``CREATIVE_AUDIO_LAB_NGRAM_MODEL`` is set by whoever
+    launches the process — the operator — so it may name any path. The
+    sidebar field is typed by whoever is *viewing* the app, who on a
+    deployed Streamlit instance is not the same person; an unconstrained
+    path there would let a visitor point the app at any file on the host
+    and learn, from the resulting success or error, whether it exists and
+    whether it parses as JSON.
+
+    So a sidebar value is resolved against :func:`model_root`, must stay
+    inside it after symlinks and ``..`` are normalised away, and must name
+    a ``.json`` file. The sidebar wins over the environment variable; empty
+    at both levels means "use the synthetic bootstrap model".
+
+    Raises
+    ------
+    ModelPathRejected
+        If the sidebar value escapes the root or is not a ``.json`` file.
     """
     env = os.environ if env is None else env
-    candidate = (user_input or env.get(NGRAM_MODEL_ENV, "")).strip()
-    return Path(candidate).expanduser() if candidate else None
+    typed = (user_input or "").strip()
+    if typed:
+        root = model_root(env)
+        # resolve() normalises "..", follows symlinks, and makes a relative
+        # entry relative to the root rather than the process cwd.
+        candidate = (root / typed).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise ModelPathRejected(
+                f"Model paths must stay inside {root}. Set {MODEL_ROOT_ENV} to "
+                "allow a different directory."
+            ) from None
+        if candidate.suffix.lower() != ".json":
+            raise ModelPathRejected("A melody model must be a .json artefact file.")
+        return candidate
+    configured = (env.get(NGRAM_MODEL_ENV) or "").strip()
+    return Path(configured).expanduser() if configured else None
 
 
 def describe_artefact(metadata: dict) -> list[str]:
@@ -106,13 +155,23 @@ with st.sidebar:
     backend_name = backend_labels.get(backend_label, DEFAULT_BACKEND_NAME)
     backend_kwargs = {}
     if backend_name == "ngram_melody":
+        # Deliberately not pre-filled from the environment: a value typed
+        # here is viewer input and is confined to model_root(), while the
+        # environment variable is operator configuration and is not.
+        configured_model = os.environ.get(NGRAM_MODEL_ENV, "").strip()
+        if configured_model:
+            st.caption(f"Default from `{NGRAM_MODEL_ENV}`: `{configured_model}`")
         model_input = st.text_input(
             "Trained melody model (JSON path)",
-            value=os.environ.get(NGRAM_MODEL_ENV, ""),
-            help="A training artefact from scripts/train_ngram_melody.py. Leave "
-            "empty to use the synthetic bootstrap model.",
+            help=f"A training artefact from scripts/train_ngram_melody.py, "
+            f"relative to {model_root()}. Leave empty to use "
+            f"{'the environment default' if configured_model else 'the synthetic bootstrap model'}.",
         )
-        model_path = resolve_ngram_model_path(model_input)
+        try:
+            model_path = resolve_ngram_model_path(model_input)
+        except ModelPathRejected as rejection:
+            st.error(f"{rejection} Falling back to the bootstrap model.")
+            model_path = None
         if model_path is None:
             st.caption(
                 "⚠️ **Stage 2 baseline, bootstrap model.** Chords/bass/drums stay "

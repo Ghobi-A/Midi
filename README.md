@@ -301,6 +301,13 @@ CREATIVE_AUDIO_LAB_NGRAM_MODEL=real_model.json streamlit run app.py
 or paste the path into the sidebar field, which shows the artefact's
 corpus, licence, and held-out score next to the backend selector.
 
+The two inputs are trusted differently on purpose. The environment variable
+is operator configuration and may name any path. A path typed into the
+sidebar is *viewer* input — on a deployed Streamlit instance the viewer is
+not the operator — so it is confined to the working directory (or
+`CREATIVE_AUDIO_LAB_MODEL_ROOT`) and must be a `.json` file, which keeps a
+visitor from pointing the app at arbitrary files on the host.
+
 ### What the numbers say today
 
 `compare_backends.py` reports note density, harmonic fit, novelty,
