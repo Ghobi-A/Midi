@@ -31,6 +31,13 @@ from ..tokenization import SymbolicTokenizer
 from ..tokenization.token_types import TokenType
 from .deterministic_backend import DeterministicBackend
 from .ngram_model import NGramModel
+from .note_event_model import (
+    DEFAULT_DURATION_ORDER,
+    DEFAULT_PITCH_ORDER,
+    DEFAULT_VELOCITY_ORDER,
+    MelodyModel,
+    NoteEventModel,
+)
 
 #: Token types the melody model is trained on; BAR/POSITION are rebuilt at decode time.
 MELODY_TOKEN_TYPES = (TokenType.NOTE_ON, TokenType.VELOCITY, TokenType.DURATION)
@@ -50,7 +57,15 @@ BOOTSTRAP_PROMPTS: Tuple[str, ...] = (
 BOOTSTRAP_KEYS: Tuple[str, ...] = ("C", "D", "E", "F", "G", "A")
 BOOTSTRAP_BPMS: Tuple[Optional[int], ...] = (None, 90, 140)
 
+#: Order of the *flat* interleaved model (kept for comparison; see note below).
 DEFAULT_ORDER = 3
+
+#: Model kinds: ``"factorised"`` (default) predicts each note attribute from
+#: its own history — pitch from previous pitches — while ``"flat"`` is the
+#: original single n-gram over the interleaved token stream, whose order-3
+#: default never saw the previous pitch when predicting the next one.
+MODEL_KINDS = ("factorised", "flat")
+DEFAULT_MODEL_KIND = "factorised"
 
 
 def transpose_notes(notes: Sequence[Note], semitones: int) -> List[Note]:
@@ -111,13 +126,39 @@ def build_bootstrap_corpus(
 def train_ngram_model(
     sequences: Iterable[Sequence[str]], order: int = DEFAULT_ORDER
 ) -> NGramModel:
-    """Fit an :class:`NGramModel` of ``order`` on token ``sequences``."""
+    """Fit a *flat* :class:`NGramModel` of ``order`` on interleaved token ``sequences``."""
     return NGramModel(order=order).fit(sequences)
 
 
-def train_bootstrap_model(order: int = DEFAULT_ORDER) -> NGramModel:
+def train_melody_model(
+    sequences: Iterable[Sequence[str]],
+    kind: str = DEFAULT_MODEL_KIND,
+    *,
+    order: Optional[int] = None,
+    duration_order: int = DEFAULT_DURATION_ORDER,
+    velocity_order: int = DEFAULT_VELOCITY_ORDER,
+) -> MelodyModel:
+    """Fit a melody model of ``kind`` on interleaved note-token ``sequences``.
+
+    ``order`` is the flat model's n-gram order, or the pitch sub-model's
+    order for the factorised kind (default 3 = two previous pitches).
+    """
+    if kind == "factorised":
+        return NoteEventModel(
+            pitch_order=DEFAULT_PITCH_ORDER if order is None else order,
+            duration_order=duration_order,
+            velocity_order=velocity_order,
+        ).fit(sequences)
+    if kind == "flat":
+        return train_ngram_model(sequences, order=DEFAULT_ORDER if order is None else order)
+    raise ValueError(f"Unknown model kind {kind!r}; expected one of {MODEL_KINDS}")
+
+
+def train_bootstrap_model(
+    order: Optional[int] = None, kind: str = DEFAULT_MODEL_KIND, **kwargs
+) -> MelodyModel:
     """Train the default demo model on the synthetic bootstrap corpus."""
-    return train_ngram_model(build_bootstrap_corpus(), order=order)
+    return train_melody_model(build_bootstrap_corpus(), kind, order=order, **kwargs)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -153,10 +194,13 @@ __all__ = [
     "BOOTSTRAP_KEYS",
     "BOOTSTRAP_BPMS",
     "DEFAULT_ORDER",
+    "MODEL_KINDS",
+    "DEFAULT_MODEL_KIND",
     "transpose_notes",
     "melody_token_stream",
     "build_bootstrap_corpus",
     "train_ngram_model",
+    "train_melody_model",
     "train_bootstrap_model",
     "main",
 ]

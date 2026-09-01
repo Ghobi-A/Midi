@@ -14,8 +14,16 @@ corpus (melodies the deterministic backend itself generates — see
 :mod:`creative_audio_lab.models.ngram_training`), so the backend is always
 runnable without downloads, but its "learning" is bounded by that corpus.
 Pass ``model`` or ``model_path`` to use a model trained on your own licensed
-token sequences instead. This is not a neural text-to-MIDI model and does
-not claim to be.
+token sequences instead (``model_path`` accepts the training artefact
+written by ``scripts/train_ngram_melody.py`` or a bare model JSON). This is
+not a neural text-to-MIDI model and does not claim to be.
+
+The default model kind is the factorised
+:class:`~creative_audio_lab.models.note_event_model.NoteEventModel`, whose
+pitch sub-model conditions on previous *pitches*. The original flat
+interleaved model is still selectable (``model_kind="flat"``) for
+comparison; at its default order of 3 it predicted pitch from the previous
+velocity and duration only.
 """
 
 from __future__ import annotations
@@ -31,27 +39,30 @@ from ..generators.melody import INSTRUMENT_RANGES, lead_instrument
 from ..music_theory import Note, note_name_to_pitch_class
 from ..prompt_parser import parse_prompt
 from ..tokenization import SymbolicTokenizer
+from .artefact import load_any_model
 from .base import GenerationBackend
 from .ngram_model import NGramModel
 from .ngram_training import (
-    DEFAULT_ORDER,
+    DEFAULT_MODEL_KIND,
     melody_token_stream,
     train_bootstrap_model,
     transpose_notes,
 )
+from .note_event_model import MelodyModel, NoteEventModel, split_note_stream
 
 #: Beats of deterministic melody kept as the seed motif before continuation.
 SEED_BEATS = float(BEATS_PER_BAR)
 
-# Bootstrap models are cached per order so repeated backend instantiations
-# (e.g. one per Streamlit "Generate" click) don't retrain.
-_BOOTSTRAP_MODELS: Dict[int, NGramModel] = {}
+# Bootstrap models are cached per (kind, order) so repeated backend
+# instantiations (e.g. one per Streamlit "Generate" click) don't retrain.
+_BOOTSTRAP_MODELS: Dict[Tuple[str, Optional[int]], MelodyModel] = {}
 
 
-def _bootstrap_model(order: int) -> NGramModel:
-    if order not in _BOOTSTRAP_MODELS:
-        _BOOTSTRAP_MODELS[order] = train_bootstrap_model(order=order)
-    return _BOOTSTRAP_MODELS[order]
+def _bootstrap_model(kind: str, order: Optional[int]) -> MelodyModel:
+    key = (kind, order)
+    if key not in _BOOTSTRAP_MODELS:
+        _BOOTSTRAP_MODELS[key] = train_bootstrap_model(order=order, kind=kind)
+    return _BOOTSTRAP_MODELS[key]
 
 
 def _stable_seed(*parts: object) -> int:
@@ -81,25 +92,39 @@ class NgramMelodyBackend(GenerationBackend):
 
     def __init__(
         self,
-        model: Optional[NGramModel] = None,
+        model: Optional[MelodyModel] = None,
         model_path: Optional[Union[str, Path]] = None,
-        order: int = DEFAULT_ORDER,
+        order: Optional[int] = None,
         temperature: float = 1.0,
         top_k: Optional[int] = None,
+        model_kind: str = DEFAULT_MODEL_KIND,
     ) -> None:
         self._model = model
         self._model_path = Path(model_path) if model_path is not None else None
         self._order = order
+        self._model_kind = model_kind
         self._temperature = temperature
         self._top_k = top_k
+        self._artefact_metadata: Optional[dict] = None
 
-    def _resolve_model(self) -> NGramModel:
+    def _resolve_model(self) -> MelodyModel:
         if self._model is None:
             if self._model_path is not None:
-                self._model = NGramModel.load_json(self._model_path)
+                self._model, self._artefact_metadata = load_any_model(self._model_path)
             else:
-                self._model = _bootstrap_model(self._order)
+                self._model = _bootstrap_model(self._model_kind, self._order)
         return self._model
+
+    @property
+    def model(self) -> MelodyModel:
+        """The resolved melody model (loads or bootstrap-trains on first access)."""
+        return self._resolve_model()
+
+    @property
+    def artefact_metadata(self) -> Optional[dict]:
+        """Training metadata of the loaded artefact, or ``None`` for bootstrap/bare models."""
+        self._resolve_model()
+        return self._artefact_metadata
 
     def generate(
         self,
@@ -194,7 +219,7 @@ class NgramMelodyBackend(GenerationBackend):
 
     def _sample_events(
         self,
-        model: NGramModel,
+        model: MelodyModel,
         context: List[str],
         rng: random.Random,
         cursor: int,
@@ -203,7 +228,61 @@ class NgramMelodyBackend(GenerationBackend):
         high: int,
     ) -> List[Tuple[int, int, int, int]]:
         """Sample (step, pitch, velocity_bin, duration_steps) events until the bars are full."""
+        if isinstance(model, NoteEventModel):
+            return self._sample_factorised(model, context, rng, cursor, total_steps, low, high)
+        return self._sample_flat(model, context, rng, cursor, total_steps, low, high)
 
+    def _sample_factorised(
+        self,
+        model: NoteEventModel,
+        context: List[str],
+        rng: random.Random,
+        cursor: int,
+        total_steps: int,
+        low: int,
+        high: int,
+    ) -> List[Tuple[int, int, int, int]]:
+        pitches, velocities, durations = split_note_stream(context)
+
+        def in_range(token: str) -> bool:
+            return low <= _token_value(token) <= high
+
+        def positive(token: str) -> bool:
+            return _token_value(token) >= 1
+
+        def sample(allowed_pitch):
+            return model.sample_note(
+                pitches, velocities, durations, rng=rng,
+                temperature=self._temperature, top_k=self._top_k,
+                allowed_pitch=allowed_pitch, allowed_duration=positive,
+            )
+
+        events: List[Tuple[int, int, int, int]] = []
+        while cursor < total_steps:
+            # Prefer pitches inside the lead instrument's range; if no
+            # backoff level has one, fall back to any observed pitch.
+            triple = sample(in_range) or sample(None)
+            if triple is None:
+                break  # untrained/degenerate model: keep whatever we have
+            pitch_token, velocity_token, duration_token = triple
+            duration = min(_token_value(duration_token), total_steps - cursor)
+            events.append((cursor, _token_value(pitch_token), _token_value(velocity_token), duration))
+            pitches.append(pitch_token)
+            velocities.append(velocity_token)
+            durations.append(f"DURATION_{duration}")
+            cursor += duration
+        return events
+
+    def _sample_flat(
+        self,
+        model: NGramModel,
+        context: List[str],
+        rng: random.Random,
+        cursor: int,
+        total_steps: int,
+        low: int,
+        high: int,
+    ) -> List[Tuple[int, int, int, int]]:
         def sample(ctx: List[str], allowed) -> Optional[str]:
             return model.sample_next(
                 ctx, temperature=self._temperature, top_k=self._top_k,
