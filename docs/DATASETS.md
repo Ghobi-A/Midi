@@ -1,9 +1,10 @@
 # Datasets
 
-This project does not download or train on any dataset today. This document
-exists so the eventual ML work described in `ML_ROADMAP.md` starts from a
-deliberate, rights-aware plan rather than whatever MIDI happens to be lying
-around.
+This project never downloads a dataset, and this repository ships none. It
+*does* now have a working intake pipeline: point it at MIDI you have
+sourced and cleared yourself, and it produces rights-checked, tokenised,
+leakage-safe training splits. This document covers how to do that, what the
+intake filters accept, and the rules that apply regardless.
 
 `creative_audio_lab.data` never fetches data automatically:
 `dataset_manifest.load_manifest` reads a manifest file you point it at, and
@@ -67,5 +68,62 @@ These are also registered (with the same provenance fields) in
    `creative_audio_lab.data.provenance.validate_manifest` and resolve every
    error (and ideally every warning) before using them for anything
    training-related.
-4. Use `creative_audio_lab.data.midi_dataset_loader.load_dataset_notes` to
-   parse the directory into `Note` events for feature extraction.
+4. Build the corpus and train:
+
+   ```bash
+   python scripts/train_ngram_melody.py --manifest datasets.json --output model.json
+   python scripts/evaluate_melody_models.py model.json --manifest datasets.json
+   ```
+
+   `build_corpus` refuses outright to train on an entry that fails
+   provenance validation or whose licence does not cover the intended use.
+   Passing `--allow-reference-only` ingests such an entry as **held-out
+   evaluation material only** — it can never enter the training split, and
+   the artefact records why.
+
+   To parse a directory into raw `Note` events without the pipeline, use
+   `creative_audio_lab.data.midi_dataset_loader.load_dataset_notes`.
+
+## What intake accepts, and what it drops
+
+Every rejection is reported with a reason (`train_ngram_melody.py` prints
+the counts; the artefact lists each piece), so a shrinking corpus is
+visible rather than silent.
+
+| Filter | Default | Why |
+| --- | --- | --- |
+| Time signature | 4/4 only | The default tokenizer grid and the generators assume 4/4. Pass `--time-signature any` to accept every meter — the tokenizer then follows each piece's own signature. Pieces whose meter changes mid-way are always dropped. |
+| Melody track | One non-drum track, at most 10% of notes sharing an onset, at least 16 notes | The model is monophonic; chordal accompaniment and drum tracks would poison pitch statistics. |
+| Key | Estimated per piece, transposed so the tonic is C | Pools pitch statistics across keys instead of memorising one key's line. |
+| Onsets | Quantised to a 16th-note grid | Matches the tokenizer's resolution. |
+| Split | Whole compositions, by seeded hash | A melody must never have fragments in both train and test. |
+
+Pieces are identified by their path **relative to the dataset root**, so
+two files named `song.mid` in different subdirectories are two different
+compositions. Each file is pinned by content hash, and the artefact records
+a hash over the whole corpus, so an evaluation run can tell you when the
+data on disk has changed underneath a model.
+
+## Known parser limitations
+
+The canonical `Note` is a pitch/start/duration/velocity event. That is
+enough for this project's own exports and for monophonic melody modelling,
+but it discards things that matter for arbitrary external corpora. What is
+handled, and what is not:
+
+- **Handled:** notes are matched by `(channel, pitch)`, so two channels
+  playing the same pitch do not steal each other's note-offs; duplicate
+  track names are disambiguated instead of overwriting each other; time
+  signatures, tempos, per-track programs and channels, drum tracks, and
+  sustain-pedal use are extracted as file metadata by
+  `midi_parser.parse_midi_info`.
+- **Not represented in `Note`:** instrument programs and channel identity,
+  tempo changes, time-signature changes within a piece, and **sustain-pedal
+  behaviour** — a pedalled passage's real sounding durations are longer
+  than the written note-offs say. Pedal use is detected and reported, not
+  applied.
+- **Consequence:** for a first real-data experiment, prefer clean,
+  single-meter, clearly-melodic sources, or tokenize with the optional
+  MidiTok/symusic path (`pip install -e ".[symbolic]"`) and apply strict
+  quality filters. Do not assume this parser handles an arbitrary
+  scraped corpus faithfully.
