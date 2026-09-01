@@ -8,6 +8,7 @@ arrangements instead of finished audio. Run with:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -25,6 +26,47 @@ from creative_audio_lab.motif_detection import detect_motifs
 from creative_audio_lab.music_theory import SCALES
 from creative_audio_lab.preview import summarize_arrangement
 from creative_audio_lab.prompt_parser import STYLE_PRESETS
+
+#: Environment variable naming a trained melody artefact to load by default.
+NGRAM_MODEL_ENV = "CREATIVE_AUDIO_LAB_NGRAM_MODEL"
+
+
+def resolve_ngram_model_path(user_input: str = "", env: dict = None) -> Path | None:
+    """Resolve which melody model the n-gram backend should load.
+
+    The sidebar field wins over the environment variable; an empty value at
+    both levels means "use the synthetic bootstrap model".
+    """
+    env = os.environ if env is None else env
+    candidate = (user_input or env.get(NGRAM_MODEL_ENV, "")).strip()
+    return Path(candidate).expanduser() if candidate else None
+
+
+def describe_artefact(metadata: dict) -> list[str]:
+    """Bullet lines describing a loaded artefact's corpus, licence, and held-out score."""
+    corpus = metadata.get("corpus", {})
+    lines = []
+    if corpus.get("source") == "synthetic-bootstrap":
+        lines.append("**Corpus:** synthetic bootstrap (this project's deterministic backend)")
+    else:
+        datasets = corpus.get("datasets", [])
+        names = ", ".join(str(d.get("name")) for d in datasets) or "unnamed corpus"
+        licences = ", ".join(sorted({str(d.get("license")) for d in datasets if d.get("license")}))
+        lines.append(f"**Corpus:** {names}")
+        if licences:
+            lines.append(f"**Licence:** {licences}")
+    kind = metadata.get("model_kind")
+    orders = metadata.get("orders", {})
+    if kind:
+        lines.append(f"**Model:** {kind} (orders: {orders})")
+    test_metrics = (metadata.get("metrics") or {}).get("test") or {}
+    if test_metrics.get("notes"):
+        lines.append(
+            f"**Held-out (test):** {test_metrics['bits_per_note']:.2f} bits/note, "
+            f"pitch {test_metrics['pitch_bits_per_note']:.2f} bits/note over "
+            f"{test_metrics['notes']} notes"
+        )
+    return lines
 
 EXAMPLE_PROMPTS = [
     "dark orchestral boss battle theme, 140 BPM, brass ostinato, strings, piano arps",
@@ -62,14 +104,45 @@ with st.sidebar:
     backend_labels = {info.display_name: info.name for info in available_backends}
     backend_label = st.selectbox("Generation backend", list(backend_labels))
     backend_name = backend_labels.get(backend_label, DEFAULT_BACKEND_NAME)
+    backend_kwargs = {}
     if backend_name == "ngram_melody":
-        st.caption(
-            "⚠️ **Stage 2 baseline.** Chords/bass/drums stay rule-based; only the "
-            "melody is continued by a small n-gram model. The demo model is "
-            "bootstrap-trained on synthetic melodies from the deterministic "
-            "backend — it demonstrates the statistical pipeline, not learning "
-            "from real music."
+        model_input = st.text_input(
+            "Trained melody model (JSON path)",
+            value=os.environ.get(NGRAM_MODEL_ENV, ""),
+            help="A training artefact from scripts/train_ngram_melody.py. Leave "
+            "empty to use the synthetic bootstrap model.",
         )
+        model_path = resolve_ngram_model_path(model_input)
+        if model_path is None:
+            st.caption(
+                "⚠️ **Stage 2 baseline, bootstrap model.** Chords/bass/drums stay "
+                "rule-based; only the melody is continued by a small n-gram model, "
+                "trained here on synthetic melodies from the deterministic backend "
+                "— it demonstrates the statistical pipeline, not learning from real "
+                "music."
+            )
+        elif not model_path.exists():
+            st.error(f"No model file at {model_path} — falling back to the bootstrap model.")
+        else:
+            backend_kwargs["model_path"] = model_path
+            try:
+                from creative_audio_lab.models.artefact import load_any_model
+
+                _, artefact_metadata = load_any_model(model_path)
+            except Exception as error:  # noqa: BLE001 - surfaced to the user below
+                st.error(f"Could not read {model_path}: {error}")
+                backend_kwargs.pop("model_path", None)
+                artefact_metadata = None
+            if backend_kwargs.get("model_path") is not None:
+                if artefact_metadata:
+                    st.success("Loaded trained melody model.")
+                    for line in describe_artefact(artefact_metadata):
+                        st.caption(line)
+                else:
+                    st.warning(
+                        "Loaded a bare model file with no training metadata — its "
+                        "corpus, licence, and held-out scores are unknown."
+                    )
     for info in future_backends:
         st.caption(f"🔒 **{info.display_name}** — scaffolded, not yet available")
     with st.expander("ML readiness"):
@@ -120,7 +193,7 @@ if generate:
     if not prompt.strip():
         st.warning("Enter a prompt first.")
     else:
-        backend = get_backend(backend_name)
+        backend = get_backend(backend_name, **backend_kwargs)
         arrangement = backend.generate(
             prompt,
             key=None if key_choice == "Auto" else key_choice,
@@ -134,6 +207,7 @@ if generate:
         )
         st.session_state["arrangement"] = arrangement
         st.session_state["arrangement_backend"] = backend_name
+        st.session_state["arrangement_model_path"] = str(backend_kwargs.get("model_path", ""))
 
 if "arrangement" in st.session_state:
     arrangement = st.session_state["arrangement"]
@@ -201,13 +275,20 @@ if "arrangement" in st.session_state:
 
     with st.expander("How this baseline works, and what comes next"):
         if arrangement_backend == "ngram_melody":
+            used_model = st.session_state.get("arrangement_model_path", "")
+            provenance = (
+                f"The melody model came from `{used_model}`; its corpus, licence, and "
+                "held-out scores are recorded in that artefact."
+                if used_model
+                else "The model is bootstrap-trained on synthetic melodies from the "
+                "deterministic backend, so this demonstrates the training and sampling "
+                "machinery, not musical generalisation."
+            )
             st.markdown(
                 "Chords, bass, drums, and structure in this arrangement were produced by the "
                 "**deterministic, rule-based generators**; the **melody** continues the opening "
                 "motif by sampling from a small **n-gram model over symbolic tokens** — the "
-                "Stage 2 statistical baseline. The demo model is bootstrap-trained on synthetic "
-                "melodies from the deterministic backend, so this demonstrates the training and "
-                "sampling machinery, not musical generalisation. See `docs/ML_ROADMAP.md`."
+                f"Stage 2 statistical baseline. {provenance} See `docs/ML_ROADMAP.md`."
             )
         else:
             st.markdown(
