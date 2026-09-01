@@ -20,7 +20,11 @@ app = [
 ]
 dev = [
     "pytest",
-    "ruff",
+    # Pinned to a minor range: Ruff's *default* rule set grows between
+    # releases (0.16 added pyupgrade, isort and more), so an unpinned linter
+    # turns an unrelated upstream release into a red build. The rules CI
+    # enforces are declared explicitly under [tool.ruff.lint] below.
+    "ruff>=0.15,<0.17",
 ]
 audio = [
     "librosa",
@@ -70,6 +74,13 @@ packages = [
 
 [tool.setuptools.package-dir]
 creative_audio_lab = "src/creative_audio_lab"
+
+[tool.ruff.lint]
+# Ruff's historical default rule set, stated explicitly so what CI enforces
+# is a property of this repository rather than of whichever Ruff version the
+# runner happened to install. Broader families (pyupgrade, isort, RUF) are a
+# deliberate repo-wide modernization, not something to inherit silently.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 # app.py and the scripts insert src/ onto sys.path before importing so they

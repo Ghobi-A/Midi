@@ -18,6 +18,7 @@ from .deterministic_backend import DeterministicBackend
 from .midi_llm_adapter import MidiLlmAdapter
 from .ngram_backend import NgramMelodyBackend
 from .ngram_model import NGramModel
+from .note_event_model import NoteEventModel
 from .text2midi_adapter import Text2MidiAdapter
 
 DEFAULT_BACKEND_NAME = DeterministicBackend.name
@@ -31,8 +32,11 @@ BACKEND_REGISTRY: Dict[str, Type[GenerationBackend]] = {
 }
 
 
-def get_backend(name: str = DEFAULT_BACKEND_NAME) -> GenerationBackend:
+def get_backend(name: str = DEFAULT_BACKEND_NAME, **kwargs) -> GenerationBackend:
     """Instantiate the backend registered under ``name``.
+
+    Keyword arguments are forwarded to the backend constructor (e.g.
+    ``get_backend("ngram_melody", model_path="model.json")``).
 
     Raises
     ------
@@ -45,7 +49,7 @@ def get_backend(name: str = DEFAULT_BACKEND_NAME) -> GenerationBackend:
         raise KeyError(
             f"Unknown backend {name!r}; registered backends: {sorted(BACKEND_REGISTRY)}"
         ) from None
-    return backend_cls()
+    return backend_cls(**kwargs)
 
 
 def list_backends() -> List[BackendInfo]:
@@ -59,6 +63,7 @@ __all__ = [
     "DeterministicBackend",
     "NgramMelodyBackend",
     "NGramModel",
+    "NoteEventModel",
     "Text2MidiAdapter",
     "MidiLlmAdapter",
     "BACKEND_REGISTRY",

@@ -62,7 +62,7 @@ def test_bootstrap_corpus_is_nonempty_token_sequences():
 def test_train_ngram_model_from_corpus():
     corpus = build_bootstrap_corpus(prompts=("calm ambient piano",), keys=("C",), bpms=(None,))
     model = train_ngram_model(corpus, order=3)
-    assert model.total_tokens == len(corpus[0])
+    assert model.total_tokens == len(corpus[0]) + 1  # + EOS
     assert model.sample_next([], seed=0) in model.vocabulary
 
 

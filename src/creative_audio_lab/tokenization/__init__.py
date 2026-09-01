@@ -14,13 +14,19 @@ Two paths are provided:
   MIDI files with the battle-tested REMI implementation.
 """
 
-from .symbolic_tokenizer import DecodedSequence, SymbolicTokenizer, TokenizerConfig
+from .symbolic_tokenizer import (
+    DecodedSequence,
+    SymbolicTokenizer,
+    TokenizerConfig,
+    beats_per_bar_for,
+)
 from .token_types import Token, TokenType, strings_to_tokens, token_from_string, tokens_to_strings
 
 __all__ = [
     "DecodedSequence",
     "SymbolicTokenizer",
     "TokenizerConfig",
+    "beats_per_bar_for",
     "Token",
     "TokenType",
     "token_from_string",

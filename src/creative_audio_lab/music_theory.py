@@ -7,7 +7,7 @@ diatonic chord construction used by every generator and analysis module.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
 # Note names
@@ -197,8 +197,88 @@ def nearest_scale_tone(pitch: int, scale_pcs: Sequence[int]) -> int:
     return pitch
 
 
+# ---------------------------------------------------------------------------
+# Key estimation
+# ---------------------------------------------------------------------------
+
+#: Krumhansl-Kessler key profiles: perceived stability of each scale degree
+#: in a major and a minor key, from the probe-tone experiments. Used to
+#: estimate a piece's key by correlating its pitch-class histogram against
+#: all 24 rotations. Dependency-free by design — no numpy needed.
+KRUMHANSL_MAJOR: Tuple[float, ...] = (
+    6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+)
+KRUMHANSL_MINOR: Tuple[float, ...] = (
+    6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+)
+
+
+@dataclass(frozen=True)
+class KeyEstimate:
+    """An estimated key: tonic name, mode, and the winning correlation."""
+
+    key: str
+    mode: str
+    correlation: float
+
+    @property
+    def pitch_class(self) -> int:
+        return note_name_to_pitch_class(self.key)
+
+
+def pitch_class_histogram(notes: Sequence["Note"], weight_by_duration: bool = True) -> List[float]:
+    """Total weight per pitch class (0-11) across ``notes``.
+
+    Weighting by duration reflects that a long note establishes a key more
+    than a passing sixteenth does.
+    """
+    histogram = [0.0] * 12
+    for note in notes:
+        histogram[note.pitch % 12] += max(note.duration, 0.0) if weight_by_duration else 1.0
+    return histogram
+
+
+def _correlation(values: Sequence[float], profile: Sequence[float]) -> float:
+    n = len(values)
+    mean_v = sum(values) / n
+    mean_p = sum(profile) / n
+    cov = sum((v - mean_v) * (p - mean_p) for v, p in zip(values, profile))
+    var_v = sum((v - mean_v) ** 2 for v in values)
+    var_p = sum((p - mean_p) ** 2 for p in profile)
+    if var_v <= 0 or var_p <= 0:
+        return 0.0
+    return cov / (var_v * var_p) ** 0.5
+
+
+def estimate_key(notes: Sequence["Note"]) -> Optional[KeyEstimate]:
+    """Estimate the key of ``notes`` by Krumhansl-Schmuckler profile correlation.
+
+    Returns ``None`` for an empty or single-pitch-class input, where no key
+    can be distinguished. The mode is ``"major"`` or ``"minor"`` — enough to
+    normalise a corpus by transposing every piece to a common tonic.
+    """
+    histogram = pitch_class_histogram(notes)
+    if sum(1 for weight in histogram if weight > 0) < 2:
+        return None
+    best: Optional[KeyEstimate] = None
+    for tonic in range(12):
+        rotated = histogram[tonic:] + histogram[:tonic]
+        for mode, profile in (("major", KRUMHANSL_MAJOR), ("minor", KRUMHANSL_MINOR)):
+            score = _correlation(rotated, profile)
+            if best is None or score > best.correlation:
+                best = KeyEstimate(
+                    key=PITCH_CLASS_NAMES_SHARP[tonic], mode=mode, correlation=score
+                )
+    return best
+
+
 __all__ = [
     "Note",
+    "KeyEstimate",
+    "KRUMHANSL_MAJOR",
+    "KRUMHANSL_MINOR",
+    "pitch_class_histogram",
+    "estimate_key",
     "Chord",
     "SCALES",
     "SCALE_ALIASES",
