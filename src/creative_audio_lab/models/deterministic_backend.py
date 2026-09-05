@@ -20,7 +20,7 @@ class DeterministicBackend(GenerationBackend):
     """Rule-based prompt-to-MIDI generation (the current default)."""
 
     name = "deterministic"
-    display_name = "Deterministic baseline"
+    display_name = "Deterministic"
     description = (
         "Keyword-based prompt parsing plus rule-based chord/melody/bass/drum "
         "generators. Fully explainable, reproducible per prompt, and requires "

@@ -262,6 +262,20 @@ Nothing is downloaded. You supply a local MIDI corpus and a manifest
 describing its rights (see [`docs/DATASETS.md`](docs/DATASETS.md)); the
 pipeline refuses to train on any entry that is not rights-cleared.
 
+For the canonical empirical comparison (deterministic generation baseline
+plus unigram, bigram and trigram note-event models; validation-only selection;
+one final test evaluation; tracked generation/error analysis), run:
+
+```bash
+python scripts/run_real_data_experiment.py --manifest datasets.json --output-dir experiments
+```
+
+The command writes a machine-readable `run.json`, a generated `report.md`, and
+the selected model artefact under a deterministic experiment ID. See
+[`docs/ML_AUDIT.md`](docs/ML_AUDIT.md),
+[`docs/EXPERIMENT_RESULTS.md`](docs/EXPERIMENT_RESULTS.md), and
+[`docs/NEURAL_BASELINE_DECISION.md`](docs/NEURAL_BASELINE_DECISION.md).
+
 ```bash
 # Synthetic bootstrap model (no corpus needed)
 python scripts/train_ngram_melody.py --output ngram_melody.json

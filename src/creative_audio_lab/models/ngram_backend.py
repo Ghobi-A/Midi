@@ -79,7 +79,7 @@ class NgramMelodyBackend(GenerationBackend):
     """Deterministic arrangement scaffolding with an N-gram-continued melody."""
 
     name = "ngram_melody"
-    display_name = "N-gram melody baseline"
+    display_name = "Statistical"
     description = (
         "Stage 2 statistical baseline: the deterministic pipeline still builds "
         "chords, bass, drums, and structure, but the melody continues a seed "
@@ -98,6 +98,8 @@ class NgramMelodyBackend(GenerationBackend):
         temperature: float = 1.0,
         top_k: Optional[int] = None,
         model_kind: str = DEFAULT_MODEL_KIND,
+        sampling_seed: Optional[int] = None,
+        seed_beats: float = SEED_BEATS,
     ) -> None:
         self._model = model
         self._model_path = Path(model_path) if model_path is not None else None
@@ -105,6 +107,8 @@ class NgramMelodyBackend(GenerationBackend):
         self._model_kind = model_kind
         self._temperature = temperature
         self._top_k = top_k
+        self._sampling_seed = sampling_seed
+        self._seed_beats = seed_beats
         self._artefact_metadata: Optional[dict] = None
 
     def _resolve_model(self) -> MelodyModel:
@@ -182,17 +186,18 @@ class NgramMelodyBackend(GenerationBackend):
             lead_instrument(controls), INSTRUMENT_RANGES["default"]
         )
 
-        seed_notes = [note for note in base_melody if note.start < SEED_BEATS]
+        seed_notes = [note for note in base_melody if note.start < self._seed_beats]
         if not seed_notes:
             seed_notes = base_melody[:1]
 
         # Sampling context is the seed motif transposed to the C root the
         # corpus was normalized to (see ngram_training).
         context = melody_token_stream(transpose_notes(seed_notes, -root_pc), tokenizer)
-        rng = random.Random(
-            _stable_seed(controls.prompt, controls.key, controls.mode, controls.bpm,
-                         controls.style, controls.density, "ngram-melody")
-        )
+        seed = self._sampling_seed
+        if seed is None:
+            seed = _stable_seed(controls.prompt, controls.key, controls.mode, controls.bpm,
+                                controls.style, controls.density, "ngram-melody")
+        rng = random.Random(seed)
 
         steps_per_beat = tokenizer.config.positions_per_beat
         total_steps = round(base.bars * BEATS_PER_BAR * steps_per_beat)
