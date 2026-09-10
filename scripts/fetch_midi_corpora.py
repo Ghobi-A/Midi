@@ -274,6 +274,13 @@ def _write_manifest(path: Path, entries: List[Dict[str, object]]) -> None:
     print(f"manifest: {path}")
 
 
+def _repo_hint(path: Path) -> Path:
+    try:
+        return path.relative_to(ROOT)
+    except ValueError:
+        return path
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -283,7 +290,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         choices=["maestro", "commu", "giantmidi", "all"],
         help="Corpora to fetch. Default: maestro commu. 'all' includes GiantMIDI.",
     )
-    parser.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--force", action="store_true", help="Delete selected extracted corpus before fetching")
     parser.add_argument("--keep-archives", action="store_true")
@@ -297,15 +303,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     entries = []
     for key in selected:
         entries.append(
-            FETCHERS[key](args.root, force=args.force, keep_archives=args.keep_archives)
+            FETCHERS[key](
+                DEFAULT_CORPUS_ROOT,
+                force=args.force,
+                keep_archives=args.keep_archives,
+            )
         )
     _write_manifest(args.manifest, entries)
 
-    total = sum(_midi_count(Path(entry["local_path"])) for entry in entries)
+    total = sum(_midi_count(ROOT / str(entry["local_path"])) for entry in entries)
     print(f"ready: {total} MIDI files across {len(entries)} corpora")
     print(
         "next: python scripts/run_real_data_experiment.py "
-        f"--manifest {args.manifest.relative_to(ROOT)} --output-dir experiments/real-midi"
+        f"--manifest {_repo_hint(args.manifest)} --output-dir experiments/real-midi"
     )
     return 0
 
