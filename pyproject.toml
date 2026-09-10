@@ -26,6 +26,11 @@ dev = [
     # enforces are declared explicitly under [tool.ruff.lint] below.
     "ruff>=0.15,<0.17",
 ]
+# Optional helper for corpora whose canonical distribution uses Google Drive.
+# MAESTRO and ComMU need only the standard library downloader.
+data = [
+    "gdown>=5.2,<6",
+]
 audio = [
     "librosa",
     "soundfile",
