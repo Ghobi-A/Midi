@@ -5,3 +5,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 venv/
+
+# Real MIDI corpora are fetched locally by scripts/fetch_midi_corpora.py.
+# Keep tens of thousands of binary training files out of the Git repository.
+data/corpora/
