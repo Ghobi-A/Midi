@@ -76,14 +76,24 @@ def midi_export_is_valid(arrangement) -> bool:
 
 
 def benchmark_prompt(
-    prompt: str, bars: Optional[int] = None, ngram_model: Optional[str] = None
+    prompt: str, bars: Optional[int] = None, ngram_model: Optional[str] = None,
+    transformer_model: Optional[str] = None,
 ) -> List[Dict[str, object]]:
     """Run ``prompt`` through every backend and collect one metrics row each."""
     deterministic_melody = None
     rows: List[Dict[str, object]] = []
-    for backend_name in BACKEND_NAMES:
+    names = BACKEND_NAMES + (("transformer_melody",) if transformer_model else ())
+    for backend_name in names:
         kwargs = {"model_path": ngram_model} if ngram_model and backend_name == "ngram_melody" else {}
-        arrangement = get_backend(backend_name, **kwargs).generate(prompt, bars=bars)
+        if backend_name == "transformer_melody":
+            try:
+                from creative_audio_lab.models.transformer_backend import TransformerMelodyBackend
+            except ImportError as error:
+                raise RuntimeError("Install the ml extra to benchmark a Transformer") from error
+            backend = TransformerMelodyBackend(transformer_model)
+        else:
+            backend = get_backend(backend_name, **kwargs)
+        arrangement = backend.generate(prompt, bars=bars)
         melody = arrangement.parts.get("melody", [])
         if backend_name == "deterministic":
             deterministic_melody = melody
@@ -140,6 +150,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         dest="prompts",
         help="Prompt to benchmark (repeatable; defaults to a built-in set)",
     )
+    parser.add_argument("--transformer-model", default=None,
+                        help="Transformer artefact directory; omitted unless explicitly trained")
     parser.add_argument("--bars", type=int, default=None, help="Override bar count for every run")
     parser.add_argument(
         "--ngram-model",
@@ -153,7 +165,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     prompts = args.prompts or list(DEFAULT_PROMPTS)
     rows: List[Dict[str, object]] = []
     for prompt in prompts:
-        rows.extend(benchmark_prompt(prompt, bars=args.bars, ngram_model=args.ngram_model))
+        rows.extend(benchmark_prompt(prompt, bars=args.bars, ngram_model=args.ngram_model,
+                                     transformer_model=args.transformer_model))
 
     table = render_markdown(rows)
     print("# Backend comparison\n")

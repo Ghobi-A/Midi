@@ -4,8 +4,8 @@
 rule-based MIDI generation with the architecture laid out for an ML
 pipeline to be added later. It is not a trained-model or applied-ML
 portfolio piece; the default generation logic is rules and music theory.
-The one statistical component so far is a deliberately small Stage 2
-n-gram melody baseline (see [Stage 2](#stage-2-n-gram-melody-baseline)
+The learned components are a deliberately small Stage 2
+n-gram melody baseline and an opt-in PyTorch causal Transformer melody baseline (see [Stage 2](#stage-2-n-gram-melody-baseline)
 below) — not a neural model. It ships trained on synthetic bootstrap data;
 training it on real music is a documented command that needs a corpus you
 supply and whose rights you have checked.
@@ -51,7 +51,7 @@ Optional extras layer on top as needed:
 pip install -e ".[app]"      # Streamlit UI
 pip install -e ".[dev]"      # pytest, ruff
 pip install -e ".[audio]"    # librosa, soundfile, pyloudnorm, demucs, spleeter, torchaudio
-pip install -e ".[ml]"       # torch, transformers, scikit-learn, datasets (future ML work)
+pip install -e ".[ml]"       # PyTorch neural melody training (plus research utilities)
 pip install -e ".[symbolic]" # miditok, symusic (optional MidiTok REMI tokenization)
 ```
 
@@ -133,7 +133,8 @@ src/creative_audio_lab/
     export/midi_export.py           Note events -> MIDI bytes (full arrangement + stems)
     evaluation/metrics.py           Note density, harmonic fit, novelty, scale adherence, ...
     models/                         GenerationBackend interface, DeterministicBackend (default),
-                                    NgramMelodyBackend (Stage 2 statistical baseline)
+                                    NgramMelodyBackend (Stage 2 statistical baseline); opt-in
+                                    TransformerMelodyModel/backend (neural melody baseline)
                                     + n-gram / factorised note-event models, training,
                                     evaluation and artefact metadata,
                                     placeholder Text2midi / MIDI-LLM adapters
@@ -451,7 +452,39 @@ ruff check src/ app.py tests/ scripts/
 
 CI (`.github/workflows/tests.yml`) runs the test suite and Ruff on Python
 3.9, 3.11, and 3.12 with only `.[dev]` installed (core deps + pytest/ruff)
-— no ML/audio extras required — plus a second job on `.[dev,symbolic]` that
-exercises the optional MidiTok/symusic tokenization path. The end-to-end
+— no ML/audio extras required — plus a symbolic-extras job and a separate
+CPU-only `.[dev,ml]` neural smoke job. The former exercises the optional
+MidiTok/symusic path; the latter runs only the tiny Transformer tests. The end-to-end
 corpus pipeline is covered by `tests/test_pipeline_smoke.py`, which builds
 its own synthetic MIDI fixture corpus; nothing is downloaded in CI.
+
+
+## Neural melody baseline
+
+The first neural baseline is implemented without replacing the deterministic or
+n-gram paths. `TransformerMelodyModel` embeds pitch, duration, and velocity
+separately, sums them with learned positions, and uses causal self-attention to
+predict all three attributes of the next note. Its likelihood is reported as the
+sum of pitch, duration, and velocity negative log probability in **bits per true
+note**, exactly matching the n-gram evaluation unit.
+
+Training is opt-in (`pip install -e ".[ml]"`) and consumes the same rights-checked,
+composition-level `CorpusBundle` splits:
+
+```bash
+python scripts/train_transformer_melody.py \
+  --manifest data/corpora/manifest.json \
+  --output-dir experiments/transformer
+```
+
+The command selects the best checkpoint using validation only, then evaluates test
+once and writes JSON/CSV/Markdown outputs plus safe tensor weights. No model weights
+or real-data results ship here. `TransformerMelodyBackend` continues the deterministic
+seed and replaces only melody; chords, bass, drums, controls, and arrangement remain
+deterministic. See `docs/NEURAL_BASELINE_DECISION.md` for methodology and limitations.
+
+Implemented: deterministic generation, factorised n-gram continuation, corpus
+provenance/splitting, causal Transformer melody training/evaluation/generation. Not
+implemented: full multitrack or text-conditioned Transformer generation, learned
+harmony/bass/drums, a large Music Transformer, production hosting, or preference
+optimisation.

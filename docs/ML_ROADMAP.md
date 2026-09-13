@@ -4,8 +4,7 @@ Creative Audio Lab's first shipped feature — the Prompt-to-MIDI Generator —
 is deliberately **deterministic and rule-based**, and that backend remains
 the default. The first *statistical* baseline (Stage 2, a factorised note-event model
 that continues a melody) is now implemented on top of it, together with a
-rights-checked corpus pipeline and held-out evaluation; no neural model is
-trained, and no external data is downloaded. This document explains why starting deterministic was the right
+rights-checked corpus pipeline and held-out evaluation; an opt-in causal Transformer melody baseline is implemented (no trained weights or real result ship), and no external data is downloaded. This document explains why starting deterministic was the right
 first step, and lays out the concrete progression toward a learned system,
 so the codebase is structured for that future without pretending to be
 there already.
@@ -171,15 +170,7 @@ fixture corpus it generates itself.
    serialization, held-out evaluation, the rights-checked corpus pipeline,
    and artefact metadata are done. What remains for this item is running it
    on a real, rights-cleared corpus — a command, not more code.
-8. **Transformer-based symbolic MIDI generation** — *not started, and
-   deliberately gated on item 7 producing a real-corpus number first: a
-   neural model is only worth training once there is a held-out baseline
-   for it to beat.* A sequence model over
-   tokenized note events trained on the ingested corpus, generating full
-   parts rather than just continuations. The Stage 1.5 tokenization layer
-   (internal REMI-style tokenizer, optional MidiTok/symusic) defines the
-   vocabulary; the Stage 1.5 backend adapters define where the model plugs
-   into the app.
+8. **Transformer melody continuation** — ✅ *implemented; empirical result pending*: a small causal PyTorch model predicts pitch, duration, and velocity from the joint previous-note history on the identical composition splits and bits/note task as the n-gram. Validation selects the checkpoint before one final test evaluation. It replaces melody only; full-part generation remains future work.
 9. **Conditional generation** — condition the transformer on key, tempo,
    mood, genre, instrument set, and an optional seed motif, so prompts and
    UI controls steer generation the same way they do today.
