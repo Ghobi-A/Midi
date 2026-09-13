@@ -291,6 +291,7 @@ def build_corpus(
     }
 
     pieces: Dict[str, TokenisedPiece] = {}
+    seen_content: Dict[str, str] = {}
     rejections: List[Tuple[str, str]] = []
     datasets: List[Dict[str, object]] = []
 
@@ -307,6 +308,15 @@ def build_corpus(
             )
         reference_only = refusal is not None
         accepted, rejected = _ingest_entry(entry, config, reference_only)
+        unique = []
+        for piece in accepted:
+            if piece.sha256 in seen_content:
+                rejected.append((piece.composition_id,
+                                  f"duplicate_content: identical to {seen_content[piece.sha256]}"))
+            else:
+                seen_content[piece.sha256] = piece.composition_id
+                unique.append(piece)
+        accepted = unique
         pieces.update({piece.composition_id: piece for piece in accepted})
         rejections.extend(rejected)
         datasets.append(

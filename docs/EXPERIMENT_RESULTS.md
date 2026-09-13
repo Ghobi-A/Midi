@@ -67,3 +67,27 @@ and fixed prompts cover only a small control surface. The next experiment is a
 complete real-corpus run followed by manual review of intake rejections,
 composition-family leakage and flagged generations. Neural work remains gated
 by `NEURAL_BASELINE_DECISION.md`.
+
+## Neural baseline runs
+
+No real-corpus neural result is checked into this repository. The CI smoke test uses
+small generated fixture melodies solely to verify causality, masking, optimization,
+finite comparable likelihoods, safe checkpoint round trips, and reproducible
+sampling. It must not be cited as a benchmark.
+
+Run a genuine experiment only after reviewing the manifest and composition families:
+
+```bash
+pip install -e ".[ml]"
+python scripts/train_transformer_melody.py \
+  --manifest data/corpora/manifest.json \
+  --output-dir experiments/transformer
+python scripts/compare_backends.py \
+  --ngram-model experiments/real-midi/selected_model.json \
+  --transformer-model experiments/transformer/model
+```
+
+The training command writes `run.json`, `report.md`, `training_history.csv`, and a
+`model/` directory. Model choice and early stopping use validation bits/note. Test is
+scored once only after the best validation checkpoint is restored. Generated-sample
+diagnostics remain separate from probabilistic generalisation.
